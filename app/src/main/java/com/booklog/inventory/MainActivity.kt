@@ -289,7 +289,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 Log.d(TAG, "Fetching books for query: $query")
-                val response = apiService.searchBooks(query, 0)
+                val response = apiService.searchBooks(query, 0, 20, BuildConfig.GOOGLE_BOOKS_API_KEY)
                 Log.d(TAG, "API response received, totalItems: ${response.totalItems}")
                 val books = response.items?.map {
                     Book(
@@ -325,7 +325,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val query = findViewById<SearchView>(R.id.search).query.toString()
-                val response = apiService.searchBooks(query, currentPage)
+                val response = apiService.searchBooks(query, currentPage, 20, BuildConfig.GOOGLE_BOOKS_API_KEY)
                 val books = response.items?.map {
                     Book(
                         it.id,
@@ -356,7 +356,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 Log.d(TAG, "Searching by ISBN: $isbn")
-                val response = apiService.searchByISBN("isbn:$isbn")
+                val response = apiService.searchByISBN("isbn:$isbn", BuildConfig.GOOGLE_BOOKS_API_KEY)
                 Log.d(TAG, "ISBN search response received")
                 val books = response.items?.map {
                     Book(
