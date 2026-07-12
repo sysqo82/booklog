@@ -14,4 +14,8 @@ web-build/
 .DS_Store
 .idea
 /app/build/
+local.properties
+.gradle/
+*.iml
+.idea/
 nul
