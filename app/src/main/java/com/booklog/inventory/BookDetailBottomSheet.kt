@@ -62,9 +62,7 @@ class BookDetailBottomSheet : BottomSheetDialogFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             val isAlreadySaved = repository.isBookSaved(book.id)
             if (isAlreadySaved) {
-                binding.detailAddBtn.isEnabled = false
-                binding.detailAddBtn.text = "Already in Collection"
-                binding.detailAddBtn.alpha = 0.5f
+                binding.detailAddBtn.visibility = android.view.View.GONE
                 binding.detailRemoveBtn.visibility = android.view.View.VISIBLE
                 binding.detailRemoveBtn.setOnClickListener {
                     viewLifecycleOwner.lifecycleScope.launch {
@@ -79,6 +77,7 @@ class BookDetailBottomSheet : BottomSheetDialogFragment() {
                     }
                 }
             } else {
+                binding.detailAddBtn.visibility = android.view.View.VISIBLE
                 binding.detailAddBtn.setOnClickListener {
                     viewLifecycleOwner.lifecycleScope.launch {
                         try {

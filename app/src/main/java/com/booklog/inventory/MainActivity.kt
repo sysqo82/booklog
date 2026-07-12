@@ -1,5 +1,6 @@
 package com.booklog.inventory
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
@@ -15,10 +16,13 @@ import com.google.android.gms.common.moduleinstall.ModuleInstall
 import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.android.gms.tasks.Task
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import androidx.activity.result.contract.ActivityResultContracts
 import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
@@ -34,25 +38,19 @@ class MainActivity : AppCompatActivity() {
     private var hasMore = true
     private var isViewingCollection = false
 
+    private val scannerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val isbn = result.data?.getStringExtra(BarcodeScannerActivity.EXTRA_RESULT_ISBN)
+            if (isbn != null) {
+                Log.d(TAG, "ISBN received from scanner: $isbn")
+                searchByISBN(isbn)
+            }
+        }
+    }
+
     private fun launchScanner() {
-        val options = GmsBarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_EAN_13)
-            .enableAutoZoom()
-            .build()
-        GmsBarcodeScanning.getClient(this, options).startScan()
-            .addOnSuccessListener { barcode ->
-                val isbn = barcode.rawValue ?: return@addOnSuccessListener
-                if (isbn.length == 13 && (isbn.startsWith("978") || isbn.startsWith("979"))) {
-                    Log.d(TAG, "ISBN received: $isbn")
-                    searchByISBN(isbn)
-                } else {
-                    Log.w(TAG, "Ignored non-ISBN barcode: $isbn")
-                    android.widget.Toast.makeText(this, "Not a valid ISBN barcode", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Scanner error: ${e.message}")
-            }
+        val intent = Intent(this, BarcodeScannerActivity::class.java)
+        scannerLauncher.launch(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,8 +74,15 @@ class MainActivity : AppCompatActivity() {
         })
 
         try {
+            val logging = HttpLoggingInterceptor { message -> Log.d("OkHttp", message) }
+            logging.level = HttpLoggingInterceptor.Level.BODY
+            val client = OkHttpClient.Builder()
+                .addInterceptor(logging)
+                .build()
+
             retrofit = Retrofit.Builder()
                 .baseUrl("https://www.googleapis.com/books/v1/")
+                .client(client)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()
             Log.d(TAG, "Retrofit initialized")
@@ -87,19 +92,36 @@ class MainActivity : AppCompatActivity() {
 
             apiService = retrofit.create(BookApiService::class.java)
 
-            adapter = BookAdapter { book ->
-                Log.d(TAG, "Book selected: ${book.title}")
-                val sheet = BookDetailBottomSheet.newInstance(book)
-                sheet.onCollectionChanged = {
-                    isViewingCollection = true
-                    findViewById<SearchView>(R.id.search)?.let {
-                        it.setQuery("", false)
-                        it.clearFocus()
+            adapter = BookAdapter(
+                onBookClick = { book ->
+                    Log.d(TAG, "Book selected: ${book.title}")
+                    val sheet = BookDetailBottomSheet.newInstance(book)
+                    sheet.onCollectionChanged = {
+                        isViewingCollection = true
+                        findViewById<SearchView>(R.id.search)?.let {
+                            it.setQuery("", false)
+                            it.clearFocus()
+                        }
+                        updateSavedIdsAndRefresh()
+                        loadCollection()
                     }
-                    loadCollection()
+                    sheet.show(supportFragmentManager, "BookDetail")
+                },
+                onQuickAddClick = { book ->
+                    lifecycleScope.launch {
+                        try {
+                            repository.addBook(book)
+                            android.widget.Toast.makeText(this@MainActivity, "Added ${book.title}", android.widget.Toast.LENGTH_SHORT).show()
+                            updateSavedIdsAndRefresh()
+                            if (isViewingCollection) {
+                                loadCollection()
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error adding book", e)
+                        }
+                    }
                 }
-                sheet.show(supportFragmentManager, "BookDetail")
-            }
+            )
             Log.d(TAG, "API service and adapter created")
 
             val recyclerView = findViewById<RecyclerView>(R.id.recycler)
@@ -203,6 +225,7 @@ class MainActivity : AppCompatActivity() {
 
             // Open on collection by default
             isViewingCollection = true
+            updateSavedIdsAndRefresh()
             searchView.clearFocus()
             loadCollection()
 
@@ -212,7 +235,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateSavedIdsAndRefresh() {
+        lifecycleScope.launch {
+            val ids = repository.getMyBooks().map { it.id }.toSet()
+            adapter.setSavedBookIds(ids)
+        }
+    }
+
     private fun loadCollection(filterAuthor: String? = null) {
+        adapter.isSearchMode = false
         isLoading = true
         lifecycleScope.launch {
             try {
@@ -278,18 +309,65 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private suspend fun <T> retryIO(
+        times: Int = 5,
+        initialDelay: Long = 2000,
+        maxDelay: Long = 10000,
+        factor: Double = 2.0,
+        block: suspend () -> T
+    ): T {
+        var currentDelay = initialDelay
+        repeat(times - 1) { attempt ->
+            try {
+                return block()
+            } catch (e: HttpException) {
+                if (e.code() == 503 || e.code() == 429) {
+                    val errorType = if (e.code() == 503) "503 Service Unavailable" else "429 Too Many Requests"
+                    Log.w(TAG, "$errorType (attempt ${attempt + 1}), retrying in ${currentDelay}ms...")
+                    delay(currentDelay)
+                    currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelay)
+                } else {
+                    throw e
+                }
+            } catch (e: Exception) {
+                // Also retry on general network failures that might be transient
+                Log.w(TAG, "Network error (attempt ${attempt + 1}), retrying in ${currentDelay}ms: ${e.message}")
+                delay(currentDelay)
+                currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelay)
+            }
+        }
+        return block() // last attempt
+    }
+
+    private fun getCountryCode(): String? {
+        return try {
+            val locale = resources.configuration.locales[0]
+            val country = locale.country
+            if (country.isNullOrEmpty()) null else country
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun search(query: String) {
         Log.d(TAG, "search() called with query: $query")
         isViewingCollection = false
+        adapter.isSearchMode = true
         findViewById<SideIndexView>(R.id.side_index)?.visibility = android.view.View.GONE
         adapter.clear()
+        updateSavedIdsAndRefresh()
         currentPage = 0
         isLoading = true
 
         lifecycleScope.launch {
             try {
                 Log.d(TAG, "Fetching books for query: $query")
-                val response = apiService.searchBooks(query, 0, 20, BuildConfig.GOOGLE_BOOKS_API_KEY)
+                val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
+                val country = getCountryCode()
+                
+                val response = retryIO {
+                    apiService.searchBooks(query, 0, 20, apiKey, country)
+                }
                 Log.d(TAG, "API response received, totalItems: ${response.totalItems}")
                 val books = response.items?.map {
                     Book(
@@ -325,7 +403,12 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val query = findViewById<SearchView>(R.id.search).query.toString()
-                val response = apiService.searchBooks(query, currentPage, 20, BuildConfig.GOOGLE_BOOKS_API_KEY)
+                val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
+                val country = getCountryCode()
+                
+                val response = retryIO {
+                    apiService.searchBooks(query, currentPage, 20, apiKey, country)
+                }
                 val books = response.items?.map {
                     Book(
                         it.id,
@@ -348,16 +431,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun searchByISBN(isbn: String) {
         isViewingCollection = false
+        adapter.isSearchMode = true
         findViewById<SideIndexView>(R.id.side_index)?.visibility = android.view.View.GONE
         adapter.clear()
+        updateSavedIdsAndRefresh()
         currentPage = 0
         isLoading = true
 
         lifecycleScope.launch {
             try {
                 Log.d(TAG, "Searching by ISBN: $isbn")
-                val response = apiService.searchByISBN("isbn:$isbn", BuildConfig.GOOGLE_BOOKS_API_KEY)
-                Log.d(TAG, "ISBN search response received")
+                val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
+                val country = getCountryCode()
+                
+                var response = retryIO {
+                    apiService.searchByISBN("isbn:$isbn", apiKey, country)
+                }
+                
+                Log.d(TAG, "ISBN search response received: ${response.items?.size ?: 0} items")
+                
+                if (response.items.isNullOrEmpty()) {
+                    Log.d(TAG, "ISBN-specific search returned no results, trying general search for ISBN: $isbn")
+                    response = retryIO {
+                        apiService.searchByISBN(isbn, apiKey, country)
+                    }
+                    Log.d(TAG, "General search response received: ${response.items?.size ?: 0} items")
+                }
+
                 val books = response.items?.map {
                     Book(
                         it.id,
@@ -367,7 +467,7 @@ class MainActivity : AppCompatActivity() {
                         it.volumeInfo.description
                     )
                 } ?: emptyList()
-                Log.d(TAG, "Mapped ${books.size} books from ISBN search")
+                Log.d(TAG, "Mapped ${books.size} books from search results")
                 if (books.isEmpty()) {
                     android.widget.Toast.makeText(this@MainActivity, "Book not found for ISBN: $isbn", android.widget.Toast.LENGTH_LONG).show()
                     loadCollection()

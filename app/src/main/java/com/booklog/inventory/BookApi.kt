@@ -31,12 +31,14 @@ interface BookApiService {
         @Query("q") query: String,
         @Query("startIndex") startIndex: Int = 0,
         @Query("maxResults") maxResults: Int = 20,
-        @Query("key") apiKey: String
+        @Query("key") apiKey: String? = null,
+        @Query("country") country: String? = null
     ): BookResponse
 
     @GET("volumes")
     suspend fun searchByISBN(
         @Query("q") isbn: String,
-        @Query("key") apiKey: String
+        @Query("key") apiKey: String? = null,
+        @Query("country") country: String? = null
     ): BookResponse
 }
