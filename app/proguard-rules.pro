@@ -1,0 +1,3 @@
+-keep class com.booklog.inventory.** { *; }
+-keep class retrofit2.** { *; }
+-keep class com.google.gson.** { *; }

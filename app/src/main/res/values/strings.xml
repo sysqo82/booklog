@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BookLog</string>
+    <string name="search_hint">Search books...</string>
+    <string name="no_results">No books found</string>
+    <string name="error_loading">Failed to load books</string>
+</resources>

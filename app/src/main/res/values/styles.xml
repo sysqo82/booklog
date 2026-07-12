@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BookLog" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">#1a2847</item>
+        <item name="colorPrimaryDark">#1a2847</item>
+        <item name="colorAccent">#1a2847</item>
+        <item name="android:windowBackground">@color/bg_light</item>
+    </style>
+</resources>

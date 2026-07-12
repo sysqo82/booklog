@@ -1,0 +1,43 @@
+{
+  "name": "booklog",
+  "displayName": "BookLog",
+  "expo": {
+    "name": "BookLog",
+    "slug": "booklog",
+    "version": "1.0.0",
+    "platforms": ["android"],
+    "orientation": "portrait",
+    "icon": "./src/assets/icon.svg",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/icon.svg",
+        "backgroundColor": "#1a2847"
+      },
+      "package": "com.booklog.inventory",
+      "permissions": [
+        "CAMERA",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "softwareKeyboardLayoutMode": "pan",
+      "versionCode": 1
+    },
+    "splash": {
+      "image": "./src/assets/icon.svg",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a2847"
+    },
+    "scheme": "booklog",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BookLog needs camera access to scan book barcodes."
+        }
+      ]
+    ]
+  }
+}
