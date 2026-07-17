@@ -15,6 +15,7 @@ data class Book(
     val id: String,
     val title: String,
     val author: String,
+    val isbn: String?,
     val thumbnail: String?,
     val description: String?
 ) : Parcelable
@@ -25,6 +26,8 @@ class BookAdapter(
 ) : RecyclerView.Adapter<BookAdapter.BookViewHolder>() {
     private val books = mutableListOf<Book>()
     private var savedBookIds = setOf<String>()
+    private var savedIsbns = setOf<String>()
+    private var savedTitleAuthors = setOf<String>()
     var isSearchMode = false
 
     class BookViewHolder(
@@ -58,7 +61,18 @@ class BookAdapter(
 
     override fun onBindViewHolder(holder: BookViewHolder, position: Int) {
         val book = books[position]
-        holder.bind(book, savedBookIds.contains(book.id), isSearchMode)
+        val normalizedIsbn = book.isbn?.replace(Regex("[^0-9X]"), "")
+        
+        val isSaved = savedBookIds.contains(book.id) || 
+                      (normalizedIsbn != null && savedIsbns.contains(normalizedIsbn)) ||
+                      savedTitleAuthors.contains(normalizeTitleAuthor(book.title, book.author))
+        holder.bind(book, isSaved, isSearchMode)
+    }
+
+    private fun normalizeTitleAuthor(title: String, author: String): String {
+        val cleanTitle = title.lowercase().replace(Regex("[^a-z0-9]"), "")
+        val cleanAuthor = author.lowercase().replace(Regex("[^a-z0-9]"), "")
+        return "$cleanTitle|$cleanAuthor"
     }
 
     override fun getItemCount() = books.size
@@ -68,8 +82,10 @@ class BookAdapter(
         notifyDataSetChanged()
     }
 
-    fun setSavedBookIds(ids: Set<String>) {
+    fun setSavedBooks(ids: Set<String>, isbns: Set<String>, titleAuthors: Set<String>) {
         savedBookIds = ids
+        savedIsbns = isbns
+        savedTitleAuthors = titleAuthors
         notifyDataSetChanged()
     }
 
