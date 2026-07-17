@@ -16,6 +16,12 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE id = :id")
     suspend fun getBook(id: String): BookEntity?
 
+    @Query("SELECT * FROM books WHERE isbn = :isbn LIMIT 1")
+    suspend fun findByIsbn(isbn: String): BookEntity?
+
+    @Query("SELECT * FROM books WHERE LOWER(title) = LOWER(:title) AND LOWER(author) = LOWER(:author) LIMIT 1")
+    suspend fun findByTitleAndAuthor(title: String, author: String): BookEntity?
+
     @Query("DELETE FROM books WHERE id = :id")
     suspend fun deleteById(id: String)
 }

@@ -60,14 +60,20 @@ class BookDetailBottomSheet : BottomSheetDialogFragment() {
         Glide.with(this).load(book.thumbnail).into(binding.detailCover)
 
         viewLifecycleOwner.lifecycleScope.launch {
-            val isAlreadySaved = repository.isBookSaved(book.id)
+            val isAlreadySaved = repository.isBookSaved(book.id, book.isbn, book.title, book.author)
             if (isAlreadySaved) {
                 binding.detailAddBtn.visibility = android.view.View.GONE
                 binding.detailRemoveBtn.visibility = android.view.View.VISIBLE
                 binding.detailRemoveBtn.setOnClickListener {
                     viewLifecycleOwner.lifecycleScope.launch {
                         try {
-                            repository.removeBook(book.id)
+                            val existing = if (book.isbn != null) {
+                                repository.findByIsbn(book.isbn)
+                            } else {
+                                repository.findByTitleAndAuthor(book.title, book.author)
+                            }
+                            val idToRemove = existing?.id ?: book.id
+                            repository.removeBook(idToRemove)
                             Toast.makeText(requireContext(), "Removed from Collection", Toast.LENGTH_SHORT).show()
                             onCollectionChanged?.invoke()
                             dismiss()

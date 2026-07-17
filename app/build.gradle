@@ -13,8 +13,8 @@ android {
         applicationId "com.booklog.inventory"
         minSdk 24
         targetSdk 36
-        versionCode 13
-        versionName "2.2"
+        versionCode 14
+        versionName "2.3"
 
         Properties properties = new Properties()
         if (project.rootProject.file('local.properties').canRead()) {
@@ -60,6 +60,7 @@ android {
 
     kapt {
         correctErrorTypes = true
+        useBuildCache = false
     }
 
     packaging {

@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.SearchView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowInsetsControllerCompat
@@ -20,6 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.google.mlkit.vision.barcode.common.Barcode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.HttpException
@@ -37,6 +39,13 @@ class MainActivity : AppCompatActivity() {
     private var isLoading = false
     private var hasMore = true
     private var isViewingCollection = false
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    private fun cancelOngoingOperations() {
+        searchJob?.cancel()
+        searchJob = null
+        isLoading = false
+    }
 
     private val scannerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -63,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (!isViewingCollection) {
+                    cancelOngoingOperations()
                     isViewingCollection = true
                     findViewById<SearchView>(R.id.search)?.clearFocus()
                     loadCollection()
@@ -159,6 +169,7 @@ class MainActivity : AppCompatActivity() {
             }
             searchView.setOnCloseListener {
                 Log.d(TAG, "SearchView closed via X button")
+                cancelOngoingOperations()
                 isViewingCollection = true
                 searchView.setQuery("", false)
                 searchView.clearFocus()
@@ -237,15 +248,38 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSavedIdsAndRefresh() {
         lifecycleScope.launch {
-            val ids = repository.getMyBooks().map { it.id }.toSet()
-            adapter.setSavedBookIds(ids)
+            val myBooks = repository.getMyBooks()
+            val ids = myBooks.map { it.id }.toSet()
+            val isbns = myBooks.mapNotNull { it.isbn?.replace(Regex("[^0-9X]"), "") }.toSet()
+            val titleAuthors = myBooks.map { 
+                val cleanTitle = it.title.lowercase().replace(Regex("[^a-z0-9]"), "")
+                val cleanAuthor = it.author.lowercase().replace(Regex("[^a-z0-9]"), "")
+                "$cleanTitle|$cleanAuthor"
+            }.toSet()
+            adapter.setSavedBooks(ids, isbns, titleAuthors)
+            findViewById<TextView>(R.id.book_counter)?.text = "${myBooks.size} books"
         }
     }
 
+    private fun mapBookItemToBook(item: BookItem): Book {
+        val isbn = item.volumeInfo.industryIdentifiers?.find { it.type == "ISBN_13" }?.identifier
+            ?: item.volumeInfo.industryIdentifiers?.find { it.type == "ISBN_10" }?.identifier
+        return Book(
+            item.id,
+            item.volumeInfo.title,
+            item.volumeInfo.authors?.firstOrNull() ?: "Unknown",
+            isbn,
+            item.volumeInfo.imageLinks?.thumbnail?.replace("http:", "https:"),
+            item.volumeInfo.description
+        )
+    }
+
     private fun loadCollection(filterAuthor: String? = null) {
+        cancelOngoingOperations()
         adapter.isSearchMode = false
         isLoading = true
-        lifecycleScope.launch {
+        findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.VISIBLE
+        searchJob = lifecycleScope.launch {
             try {
                 Log.d(TAG, "Loading user's collection${if (filterAuthor != null) " filtered by $filterAuthor" else ""}")
                 var myBooks = repository.getMyBooks()
@@ -255,11 +289,12 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 Log.d(TAG, "Fetched ${myBooks.size} books from collection")
+                findViewById<TextView>(R.id.book_counter)?.text = "${myBooks.size} books"
                 adapter.clear()
                 
                 // Sort by author's last name
                 val sortedBooks = myBooks.map {
-                    Book(it.id, it.title, it.author, it.thumbnail, it.description)
+                    Book(it.id, it.title, it.author, it.isbn, it.thumbnail, it.description)
                 }.sortedBy { book ->
                     val names = book.author.split(" ").filter { it.isNotBlank() }
                     if (names.isNotEmpty()) names.last().lowercase() else ""
@@ -304,7 +339,9 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TAG, "Error loading collection", e)
                 e.printStackTrace()
             } finally {
-                isLoading = false
+                if (isActive) {
+                    isLoading = false
+                }
             }
         }
     }
@@ -351,6 +388,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun search(query: String) {
         Log.d(TAG, "search() called with query: $query")
+        cancelOngoingOperations()
         isViewingCollection = false
         adapter.isSearchMode = true
         findViewById<SideIndexView>(R.id.side_index)?.visibility = android.view.View.GONE
@@ -359,7 +397,7 @@ class MainActivity : AppCompatActivity() {
         currentPage = 0
         isLoading = true
 
-        lifecycleScope.launch {
+        searchJob = lifecycleScope.launch {
             try {
                 Log.d(TAG, "Fetching books for query: $query")
                 val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
@@ -369,16 +407,9 @@ class MainActivity : AppCompatActivity() {
                     apiService.searchBooks(query, 0, 20, apiKey, country)
                 }
                 Log.d(TAG, "API response received, totalItems: ${response.totalItems}")
-                val books = response.items?.map {
-                    Book(
-                        it.id,
-                        it.volumeInfo.title,
-                        it.volumeInfo.authors?.firstOrNull() ?: "Unknown",
-                        it.volumeInfo.imageLinks?.thumbnail?.replace("http:", "https:"),
-                        it.volumeInfo.description
-                    )
-                } ?: emptyList()
+                val books = response.items?.map { mapBookItemToBook(it) } ?: emptyList()
                 Log.d(TAG, "Mapped ${books.size} books")
+                findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
                 adapter.addBooks(books)
                 hasMore = books.size < response.totalItems
                 currentPage = 20
@@ -393,14 +424,17 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TAG, "Error in search()", e)
                 e.printStackTrace()
             } finally {
-                isLoading = false
+                if (isActive) {
+                    isLoading = false
+                }
             }
         }
     }
 
     private fun loadMore() {
+        if (isViewingCollection) return // Don't load more search results if we are in collection view
         isLoading = true
-        lifecycleScope.launch {
+        searchJob = lifecycleScope.launch {
             try {
                 val query = findViewById<SearchView>(R.id.search).query.toString()
                 val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
@@ -409,27 +443,23 @@ class MainActivity : AppCompatActivity() {
                 val response = retryIO {
                     apiService.searchBooks(query, currentPage, 20, apiKey, country)
                 }
-                val books = response.items?.map {
-                    Book(
-                        it.id,
-                        it.volumeInfo.title,
-                        it.volumeInfo.authors?.firstOrNull() ?: "Unknown",
-                        it.volumeInfo.imageLinks?.thumbnail?.replace("http:", "https:"),
-                        it.volumeInfo.description
-                    )
-                } ?: emptyList()
+                val books = response.items?.map { mapBookItemToBook(it) } ?: emptyList()
                 adapter.addBooks(books)
                 hasMore = (currentPage + books.size) < response.totalItems
                 currentPage += 20
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                isLoading = false
+                if (isActive) {
+                    isLoading = false
+                }
             }
         }
     }
 
     private fun searchByISBN(isbn: String) {
+        val normalizedIsbn = isbn.replace(Regex("[^0-9X]"), "")
+        cancelOngoingOperations()
         isViewingCollection = false
         adapter.isSearchMode = true
         findViewById<SideIndexView>(R.id.side_index)?.visibility = android.view.View.GONE
@@ -438,40 +468,33 @@ class MainActivity : AppCompatActivity() {
         currentPage = 0
         isLoading = true
 
-        lifecycleScope.launch {
+        searchJob = lifecycleScope.launch {
             try {
-                Log.d(TAG, "Searching by ISBN: $isbn")
+                Log.d(TAG, "Searching by ISBN: $normalizedIsbn")
                 val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
                 val country = getCountryCode()
                 
                 var response = retryIO {
-                    apiService.searchByISBN("isbn:$isbn", apiKey, country)
+                    apiService.searchByISBN("isbn:$normalizedIsbn", apiKey, country)
                 }
                 
                 Log.d(TAG, "ISBN search response received: ${response.items?.size ?: 0} items")
                 
                 if (response.items.isNullOrEmpty()) {
-                    Log.d(TAG, "ISBN-specific search returned no results, trying general search for ISBN: $isbn")
+                    Log.d(TAG, "ISBN-specific search returned no results, trying general search for ISBN: $normalizedIsbn")
                     response = retryIO {
-                        apiService.searchByISBN(isbn, apiKey, country)
+                        apiService.searchByISBN(normalizedIsbn, apiKey, country)
                     }
                     Log.d(TAG, "General search response received: ${response.items?.size ?: 0} items")
                 }
 
-                val books = response.items?.map {
-                    Book(
-                        it.id,
-                        it.volumeInfo.title,
-                        it.volumeInfo.authors?.firstOrNull() ?: "Unknown",
-                        it.volumeInfo.imageLinks?.thumbnail?.replace("http:", "https:"),
-                        it.volumeInfo.description
-                    )
-                } ?: emptyList()
+                val books = response.items?.map { mapBookItemToBook(it) } ?: emptyList()
                 Log.d(TAG, "Mapped ${books.size} books from search results")
                 if (books.isEmpty()) {
                     android.widget.Toast.makeText(this@MainActivity, "Book not found for ISBN: $isbn", android.widget.Toast.LENGTH_LONG).show()
                     loadCollection()
                 } else {
+                    findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
                     adapter.addBooks(books)
                 }
                 
@@ -487,7 +510,9 @@ class MainActivity : AppCompatActivity() {
                 android.widget.Toast.makeText(this@MainActivity, "Error searching for book", android.widget.Toast.LENGTH_SHORT).show()
                 loadCollection()
             } finally {
-                isLoading = false
+                if (isActive) {
+                    isLoading = false
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.annotation.OptIn
@@ -18,6 +19,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -48,7 +51,17 @@ class BarcodeScannerActivity : AppCompatActivity() {
 
         previewView = findViewById(R.id.previewView)
         scanBox = findViewById(R.id.scan_box)
-        findViewById<ImageButton>(R.id.close_btn).setOnClickListener { finish() }
+        val closeBtn = findViewById<ImageButton>(R.id.close_btn)
+        closeBtn.setOnClickListener { finish() }
+
+        // Adjust close button position for status bar
+        ViewCompat.setOnApplyWindowInsetsListener(closeBtn) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val lp = v.layoutParams as ViewGroup.MarginLayoutParams
+            lp.topMargin = systemBars.top + (16 * resources.displayMetrics.density).toInt()
+            v.layoutParams = lp
+            insets
+        }
 
         // Tap to focus
         previewView.setOnTouchListener { _, event ->
