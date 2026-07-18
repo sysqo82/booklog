@@ -13,8 +13,8 @@ android {
         applicationId "com.booklog.inventory"
         minSdk 24
         targetSdk 36
-        versionCode 14
-        versionName "2.3"
+        versionCode 15
+        versionName "2.4"
 
         Properties properties = new Properties()
         if (project.rootProject.file('local.properties').canRead()) {

@@ -18,8 +18,25 @@ abstract class BookDatabase : RoomDatabase() {
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Safely add columns if they are missing. addedAt is the most likely culprit.
-                db.execSQL("ALTER TABLE books ADD COLUMN addedAt INTEGER NOT NULL DEFAULT 0")
+                val cursor = db.query("PRAGMA table_info(books)")
+                val existingColumns = mutableSetOf<String>()
+                while (cursor.moveToNext()) {
+                    existingColumns.add(cursor.getString(cursor.getColumnIndexOrThrow("name")))
+                }
+                cursor.close()
+
+                if (!existingColumns.contains("isbn")) {
+                    db.execSQL("ALTER TABLE books ADD COLUMN isbn TEXT")
+                }
+                if (!existingColumns.contains("thumbnail")) {
+                    db.execSQL("ALTER TABLE books ADD COLUMN thumbnail TEXT")
+                }
+                if (!existingColumns.contains("description")) {
+                    db.execSQL("ALTER TABLE books ADD COLUMN description TEXT")
+                }
+                if (!existingColumns.contains("addedAt")) {
+                    db.execSQL("ALTER TABLE books ADD COLUMN addedAt INTEGER NOT NULL DEFAULT 0")
+                }
             }
         }
 
