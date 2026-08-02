@@ -24,4 +24,13 @@ interface BookDao {
 
     @Query("DELETE FROM books WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("UPDATE books SET thumbnail = :thumbnail, description = :description WHERE id = :id")
+    suspend fun updateBookMetadata(id: String, thumbnail: String?, description: String?)
+
+    @Query("UPDATE books SET isbn = :isbn, thumbnail = :thumbnail, description = :description WHERE id = :id")
+    suspend fun updateFullMetadata(id: String, isbn: String?, thumbnail: String?, description: String?)
+
+    @Query("SELECT * FROM books WHERE thumbnail IS NULL OR thumbnail = '' OR thumbnail LIKE '%openlibrary.org%' OR description IS NULL OR description = ''")
+    suspend fun getBooksToEnrich(): List<BookEntity>
 }

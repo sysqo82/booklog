@@ -18,6 +18,13 @@ import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.android.gms.tasks.Task
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkRequest
 import com.google.mlkit.vision.barcode.common.Barcode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -27,12 +34,14 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.util.LinkedHashSet
 
 private const val TAG = "BookLog"
 
 class MainActivity : AppCompatActivity() {
     private lateinit var retrofit: Retrofit
     private lateinit var apiService: BookApiService
+    private lateinit var olService: OpenLibraryService
     private lateinit var adapter: BookAdapter
     private lateinit var repository: BookRepository
     private var currentPage = 0
@@ -72,13 +81,14 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (!isViewingCollection) {
+                    Log.d(TAG, "Back pressed: in search mode, returning to collection")
                     cancelOngoingOperations()
-                    isViewingCollection = true
+                    findViewById<SearchView>(R.id.search)?.setQuery("", false)
                     findViewById<SearchView>(R.id.search)?.clearFocus()
                     loadCollection()
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                    Log.d(TAG, "Back pressed: in collection mode, exiting")
+                    finish()
                 }
             }
         })
@@ -88,6 +98,9 @@ class MainActivity : AppCompatActivity() {
             logging.level = HttpLoggingInterceptor.Level.BODY
             val client = OkHttpClient.Builder()
                 .addInterceptor(logging)
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
 
             retrofit = Retrofit.Builder()
@@ -101,6 +114,15 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "Repository initialized")
 
             apiService = retrofit.create(BookApiService::class.java)
+
+            val olRetrofit = Retrofit.Builder()
+                .baseUrl("https://openlibrary.org/")
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+            olService = olRetrofit.create(OpenLibraryService::class.java)
+
+            scheduleBookEnrichment()
 
             adapter = BookAdapter(
                 onBookClick = { book ->
@@ -274,8 +296,32 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun mapOLDocToBook(doc: OLDoc): Book {
+        val coverUrl = doc.cover_i?.let { "https://covers.openlibrary.org/b/id/$it-M.jpg" }
+        return Book(
+            id = doc.key.replace("/works/", ""),
+            title = doc.title,
+            author = doc.author_name?.firstOrNull() ?: "Unknown",
+            isbn = doc.isbn?.firstOrNull(),
+            thumbnail = coverUrl,
+            description = null
+        )
+    }
+
+    private fun mapOLBookDataToBook(key: String, data: OLBookData): Book {
+        return Book(
+            id = key.replace("ISBN:", ""),
+            title = data.title,
+            author = data.authors?.firstOrNull()?.name ?: "Unknown",
+            isbn = data.isbn_13?.firstOrNull() ?: data.isbn_10?.firstOrNull(),
+            thumbnail = data.cover?.medium ?: data.cover?.large,
+            description = data.subjects?.joinToString(", ") { it.name }
+        )
+    }
+
     private fun loadCollection(filterAuthor: String? = null) {
         cancelOngoingOperations()
+        isViewingCollection = true
         adapter.isSearchMode = false
         isLoading = true
         findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.VISIBLE
@@ -347,9 +393,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun <T> retryIO(
-        times: Int = 5,
-        initialDelay: Long = 2000,
-        maxDelay: Long = 10000,
+        times: Int = 3,
+        initialDelay: Long = 1000,
+        maxDelay: Long = 5000,
         factor: Double = 2.0,
         block: suspend () -> T
     ): T {
@@ -366,8 +412,8 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     throw e
                 }
-            } catch (e: Exception) {
-                // Also retry on general network failures that might be transient
+            } catch (e: java.io.IOException) {
+                // Retry on network failures (timeout, connection lost)
                 Log.w(TAG, "Network error (attempt ${attempt + 1}), retrying in ${currentDelay}ms: ${e.message}")
                 delay(currentDelay)
                 currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelay)
@@ -403,9 +449,36 @@ class MainActivity : AppCompatActivity() {
                 val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
                 val country = getCountryCode()
                 
-                val response = retryIO {
-                    apiService.searchBooks(query, 0, 20, apiKey, country)
+                val response = try {
+                    retryIO {
+                        apiService.searchBooks(query, 0, 20, apiKey, country)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Google Books search failed completely, trying Open Library fallback...", e)
+                    null
                 }
+
+                if (response == null || response.items.isNullOrEmpty()) {
+                    Log.d(TAG, "Google Books search returned 0 results or failed, trying Open Library...")
+                    val olResponse = olService.search(query)
+                    val olBooks = olResponse.docs?.map { mapOLDocToBook(it) } ?: emptyList()
+                    
+                    if (olBooks.isNotEmpty()) {
+                        Log.d(TAG, "Found ${olBooks.size} books on Open Library")
+                        findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
+                        adapter.addBooks(olBooks)
+                        hasMore = olBooks.size >= 20
+                        currentPage = 20
+                    } else {
+                        Log.d(TAG, "No books found on Open Library either")
+                        if (response == null) {
+                             android.widget.Toast.makeText(this@MainActivity, "Search failed. Please check connection.", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    isLoading = false
+                    return@launch
+                }
+
                 Log.d(TAG, "API response received, totalItems: ${response.totalItems}")
                 val books = response.items?.map { mapBookItemToBook(it) } ?: emptyList()
                 Log.d(TAG, "Mapped ${books.size} books")
@@ -473,27 +546,99 @@ class MainActivity : AppCompatActivity() {
                 Log.d(TAG, "Searching by ISBN: $normalizedIsbn")
                 val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
                 val country = getCountryCode()
-                
-                var response = retryIO {
-                    apiService.searchByISBN("isbn:$normalizedIsbn", apiKey, country)
-                }
-                
-                Log.d(TAG, "ISBN search response received: ${response.items?.size ?: 0} items")
-                
-                if (response.items.isNullOrEmpty()) {
-                    Log.d(TAG, "ISBN-specific search returned no results, trying general search for ISBN: $normalizedIsbn")
-                    response = retryIO {
-                        apiService.searchByISBN(normalizedIsbn, apiKey, country)
-                    }
-                    Log.d(TAG, "General search response received: ${response.items?.size ?: 0} items")
+
+                val queryCandidates = listOf("isbn:$normalizedIsbn", normalizedIsbn)
+                val countryCandidates = LinkedHashSet<String?>().apply {
+                    add(country)
+                    add(null)
                 }
 
-                val books = response.items?.map { mapBookItemToBook(it) } ?: emptyList()
-                Log.d(TAG, "Mapped ${books.size} books from search results")
-                if (books.isEmpty()) {
-                    android.widget.Toast.makeText(this@MainActivity, "Book not found for ISBN: $isbn", android.widget.Toast.LENGTH_LONG).show()
+                var response: BookResponse? = null
+                var useFallback = false
+
+                try {
+                    var shouldStop = false
+                    for (query in queryCandidates) {
+                        for (countryCandidate in countryCandidates) {
+                            Log.d(TAG, "Trying ISBN lookup query='$query', country='${countryCandidate ?: "none"}'")
+                            val candidateResponse = try {
+                                retryIO {
+                                    apiService.searchByISBN(query, apiKey, countryCandidate)
+                                }
+                            } catch (e: HttpException) {
+                                Log.w(TAG, "Candidate ISBN lookup failed with HTTP ${e.code()}")
+                                if (e.code() == 503 || e.code() == 429) {
+                                    shouldStop = true
+                                    useFallback = true
+                                    break
+                                }
+                                continue
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Candidate ISBN lookup failed with error", e)
+                                shouldStop = true
+                                useFallback = true
+                                break
+                            }
+                            val candidateCount = candidateResponse.items?.size ?: 0
+                            Log.d(TAG, "Candidate response received: $candidateCount items")
+                            if (!candidateResponse.items.isNullOrEmpty()) {
+                                response = candidateResponse
+                                shouldStop = true
+                                break
+                            }
+                            if (response == null) {
+                                response = candidateResponse
+                            }
+                        }
+                        if (shouldStop) break
+                    }
+                } catch (e: Exception) {
+                    useFallback = true
+                }
+
+                if (useFallback || (response?.items.isNullOrEmpty())) {
+                    Log.w(TAG, "Google ISBN search returned 0 results or failed, trying Open Library fallback...")
+                    
+                    // Try direct ISBN lookup first
+                    val bibKey = "ISBN:$normalizedIsbn"
+                    val directOlResponse = try {
+                        olService.getBookByISBN(bibKey)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Direct OL lookup failed", e)
+                        null
+                    }
+
+                    if (!directOlResponse.isNullOrEmpty() && directOlResponse.containsKey(bibKey)) {
+                        val book = mapOLBookDataToBook(bibKey, directOlResponse[bibKey]!!)
+                        Log.d(TAG, "Found book via direct OL ISBN lookup: ${book.title}")
+                        adapter.addBooks(listOf(book))
+                        findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
+                        isLoading = false
+                        return@launch
+                    }
+
+                    val olResponse = try {
+                        olService.search("isbn:$normalizedIsbn")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "General OL search failed", e)
+                        null
+                    }
+
+                    val olBooks = olResponse?.docs?.map { mapOLDocToBook(it) } ?: emptyList()
+                    if (olBooks.isNotEmpty()) {
+                        Log.d(TAG, "Found ${olBooks.size} books via general OL search")
+                        adapter.addBooks(olBooks)
+                        findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
+                        isLoading = false
+                        return@launch
+                    }
+                    
+                    Log.d(TAG, "No results found for ISBN on either service")
+                    android.widget.Toast.makeText(this@MainActivity, "Book not found", android.widget.Toast.LENGTH_LONG).show()
                     loadCollection()
                 } else {
+                    val books = response?.items?.map { mapBookItemToBook(it) } ?: emptyList()
+                    Log.d(TAG, "Mapped ${books.size} books from search results")
                     findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
                     adapter.addBooks(books)
                 }
@@ -505,6 +650,15 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 hasMore = false
+            } catch (e: HttpException) {
+                Log.e(TAG, "HTTP error in searchByISBN()", e)
+                val message = if (e.code() == 429) {
+                    "Google Books API quota reached. Add an API key in local.properties to restore lookups."
+                } else {
+                    "Error searching for book"
+                }
+                android.widget.Toast.makeText(this@MainActivity, message, android.widget.Toast.LENGTH_LONG).show()
+                loadCollection()
             } catch (e: Exception) {
                 Log.e(TAG, "Error in searchByISBN()", e)
                 android.widget.Toast.makeText(this@MainActivity, "Error searching for book", android.widget.Toast.LENGTH_SHORT).show()
@@ -515,6 +669,27 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun scheduleBookEnrichment() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val enrichmentRequest = PeriodicWorkRequestBuilder<BookEnrichmentWorker>(12, java.util.concurrent.TimeUnit.HOURS)
+            .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                WorkRequest.MIN_BACKOFF_MILLIS,
+                java.util.concurrent.TimeUnit.MILLISECONDS
+            )
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "BookEnrichment",
+            ExistingPeriodicWorkPolicy.REPLACE,
+            enrichmentRequest
+        )
     }
 
     private fun showAuthorFilterDialog() {

@@ -46,6 +46,18 @@ class BookRepository(context: Context) {
         return bookDao.getBook(id)
     }
 
+    suspend fun getBooksToEnrich(): List<BookEntity> {
+        return bookDao.getBooksToEnrich()
+    }
+
+    suspend fun updateBookMetadata(id: String, thumbnail: String?, description: String?) {
+        bookDao.updateBookMetadata(id, thumbnail, description)
+    }
+
+    suspend fun updateFullMetadata(id: String, isbn: String?, thumbnail: String?, description: String?) {
+        bookDao.updateFullMetadata(id, isbn, thumbnail, description)
+    }
+
     suspend fun isBookSaved(id: String, isbn: String? = null, title: String? = null, author: String? = null): Boolean {
         if (bookDao.getBook(id) != null) return true
         
