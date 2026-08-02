@@ -38,13 +38,17 @@ interface BookApiService {
         @Query("startIndex") startIndex: Int = 0,
         @Query("maxResults") maxResults: Int = 20,
         @Query("key") apiKey: String? = null,
-        @Query("country") country: String? = null
+        @Query("country") country: String? = null,
+        @Query("projection") projection: String? = "lite",
+        @Query("fields") fields: String? = "totalItems,items(id,volumeInfo(title,authors,imageLinks/thumbnail,description,industryIdentifiers))"
     ): BookResponse
 
     @GET("volumes")
     suspend fun searchByISBN(
         @Query("q") isbn: String,
         @Query("key") apiKey: String? = null,
-        @Query("country") country: String? = null
+        @Query("country") country: String? = null,
+        @Query("projection") projection: String? = "lite",
+        @Query("fields") fields: String? = "totalItems,items(id,volumeInfo(title,authors,imageLinks/thumbnail,description,industryIdentifiers))"
     ): BookResponse
 }
