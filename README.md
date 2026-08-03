@@ -1,144 +1,58 @@
-# BookLog - Minimalist Book Inventory Android App
+# BookLog 📚
 
-A sleek, minimalist Android app for cataloguing and discovering books. Powered by Google Books API. No authentication required.
+**BookLog** is a native Android application designed for bibliophiles to effortlessly catalog and manage their personal book collections. It combines the speed of barcode scanning with intelligent metadata enrichment to build a comprehensive digital library.
 
-## Features
+<img src="booklog.png" width="128" alt="BookLog Logo">
 
-- **📱 Android-First**: Optimized for Android devices (API 21+)
-- **🔍 Smart Search**: Full-text search across Google Books database
-- **📸 Barcode Scanning**: One-tap ISBN scanner with device camera
-- **∞ Infinite Grid**: Smooth infinite scrolling with lazy loading
-- **🎨 Minimalist UI**: Clean dark-blue theme, zero clutter
-- **⚡ Fast**: 50KB average API response, optimized for 4G/WiFi
+## Key Features
 
-## Quick Start
+### 🔍 Effortless Cataloging
+- **Barcode Scanner**: Quickly add books to your collection by scanning their ISBN barcodes using the integrated CameraX and Google ML Kit scanner.
+- **Manual Search**: Search the Google Books and Open Library databases directly to find and add books manually.
 
-### Installation
-```bash
-npm install
-```
+### ✨ Intelligent Metadata Enrichment
+- **Automatic Details**: The app automatically fetches high-quality cover art, synopses, and ISBN data.
+- **Hybrid Source Logic**: Utilizes both Google Books and Open Library APIs to ensure the best possible data coverage.
+- **Pseudonym Handling**: Smart matching logic that connects different author names (e.g., pen names vs. real names like Edward Marston/Keith Miles) to ensure your collection stays accurate.
 
-### Development
-```bash
-npm start              # Start Expo dev server
-npm run android        # Build & run on Android
-npm run dev            # Reset cache + rebuild
-```
+### 🛠 Background Maintenance
+- **Auto-Update Worker**: A background process runs every 12 hours to check for better cover images or more detailed descriptions, keeping your library up-to-date even when the app is closed.
 
-### Production
-```bash
-npm run build:android  # Create production APK
-```
+### 📖 Collection Management
+- **Offline Access**: Your entire collection is stored locally using a Room database, meaning you can browse your library without an internet connection.
+- **Search & Filter**: Quickly find any book in your collection with a responsive search bar and author-based filtering.
+- **Detailed View**: View full synopses and metadata for every book in an elegant, modern bottom sheet interface.
 
-## Requirements
+## How It Looks
 
-- **Node.js** 16+
-- **Android SDK** 21+ (via Android Studio or EAS)
-- **Expo CLI** (`npm install -g expo-cli`)
-- **Emulator** or **Physical Device** with USB Debugging
+BookLog features a clean, minimalist design following modern Android UI principles:
+- **Main Dashboard**: A scrollable list of your books with high-resolution thumbnails and clear typography.
+- **Interactive FAB**: A single-tap Floating Action Button to launch the scanner immediately.
+- **Light & Airy**: A white-themed interface with light status bars for a modern look and feel.
 
 ## Tech Stack
 
-- **React Native** 0.71 - Cross-platform framework
-- **Expo** 49 - Development & build platform
-- **Google Books API** v1 - Book data
-- **TypeScript** - Type safety
-- **Async Storage** - Local persistence
+- **Language**: Kotlin
+- **Architecture**: MVVM / Repository Pattern
+- **Local Storage**: Room Persistence Library
+- **Networking**: Retrofit + OkHttp
+- **Imaging**: Glide for smooth image loading and caching
+- **Scanning**: CameraX + Google ML Kit Barcode Scanning
+- **Background Tasks**: WorkManager for periodic enrichment
 
-## Architecture
+## Getting Started
 
-```
-src/
-├── screens/         # Full-screen components
-├── components/      # Reusable UI components
-├── services/        # API integrations
-└── utils/           # Helpers & constants
-```
+### Prerequisites
+- Android Studio Ladybug (or newer)
+- Android SDK 24+ (Min SDK)
+- JDK 17
 
-## Key Components
-
-| Component | Purpose |
-|-----------|---------|
-| `HomeScreen` | Main dashboard & layout |
-| `SearchBar` | Search input + camera button |
-| `BookGrid` | Infinite scroll grid |
-| `BookTile` | Individual book card |
-| `BarcodeScanner` | Camera interface |
-| `FAB` | Floating action button |
-
-## API Integration
-
-- **Endpoint**: Google Books API v1
-- **Key**: Provided (free public tier)
-- **Rate Limit**: 1,000 requests/day
-- **Features**: Full-text search, ISBN lookup
-
-## Design
-
-- **Primary Color**: `#1a2847` (Dark Blue)
-- **Secondary**: `#ffffff` (White)
-- **Layout**: 2-column grid, responsive
-- **Icons**: Material Design via Expo Icons
-
-## Security
-
-- ✅ No login required
-- ✅ Public API key (safe to share)
-- ✅ No personal data collection
-- ✅ HTTPS only
-- ✅ Permissions: Camera only
-
-## Building & Deployment
-
-### Development APK
-```bash
-npm run build:android-preview
-```
-
-### Production APK (Signed)
-```bash
-npm run build:android
-```
-
-### Google Play Store
-1. Build production APK
-2. Create developer account
-3. Upload to Play Console
-4. Follow release checklist
-
-## Customization
-
-### App Name
-`app.json` → `expo.name`
-
-### Colors
-`src/utils/theme.ts` → `colors` object
-
-### Package Name
-`app.json` → `android.package`
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Module errors | `npm install && npm start -- --reset-cache` |
-| Camera not working | Grant permissions in Settings |
-| Emulator slow | Use physical device instead |
-| Port 8081 in use | Kill process: `lsof -i :8081; kill -9 <PID>` |
-
-See [SETUP.md](SETUP.md) for detailed Android setup instructions.
-
-## License
-
-MIT - Free to use and modify
-
-## Credits
-
-- [Google Books API](https://developers.google.com/books)
-- [React Native](https://reactnative.dev)
-- [Expo](https://expo.dev)
+### Setup
+1. **Clone the repository.**
+2. **Open in Android Studio.**
+3. **API Key (Optional)**: 
+   Add `google.books.api.key=YOUR_KEY` to your `local.properties` file to avoid rate-limiting on Google Books requests.
+4. **Run**: Deploy to your physical device or emulator.
 
 ---
-
-**Ready to start?** → [SETUP.md](SETUP.md)  
-**Need help?** → [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
+*Developed for Android with ☕ and ❤️.*
