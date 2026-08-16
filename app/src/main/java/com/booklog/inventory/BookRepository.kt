@@ -22,7 +22,7 @@ class BookRepository(context: Context) {
             isbn = normalizedIsbn,
             thumbnail = book.thumbnail,
             description = book.description,
-            isInWishlist = isInWishlist
+            isInWishlist = isInWishlist,
         ))
     }
 
@@ -47,44 +47,12 @@ class BookRepository(context: Context) {
         return bookDao.getAllBooks()
     }
 
-    suspend fun getBook(id: String): BookEntity? {
-        return bookDao.getBook(id)
-    }
-
     suspend fun getBooksToEnrich(): List<BookEntity> {
         return bookDao.getBooksToEnrich()
-    }
-
-    suspend fun updateBookMetadata(id: String, thumbnail: String?, description: String?) {
-        bookDao.updateBookMetadata(id, thumbnail, description)
     }
 
     suspend fun updateFullMetadata(id: String, isbn: String?, thumbnail: String?, description: String?) {
         bookDao.updateFullMetadata(id, isbn, thumbnail, description)
     }
 
-    suspend fun isBookSaved(id: String, isbn: String? = null, title: String? = null, author: String? = null): Boolean {
-        if (bookDao.getBook(id) != null) return true
-        
-        val normalizedIsbn = isbn?.replace(Regex("[^0-9X]"), "")
-        if (normalizedIsbn != null && bookDao.findByIsbn(normalizedIsbn) != null) return true
-        
-        if (title != null && author != null) {
-            // Check by exact title/author first (database call)
-            if (bookDao.findByTitleAndAuthor(title, author) != null) return true
-            
-            // Fuzzy check in memory for small variations
-            val allBooks = bookDao.getAllBooks()
-            val cleanTitle = title.lowercase().replace(Regex("[^a-z0-9]"), "")
-            val cleanAuthor = author.lowercase().replace(Regex("[^a-z0-9]"), "")
-            
-            val matchFound = allBooks.any { 
-                val itTitle = it.title.lowercase().replace(Regex("[^a-z0-9]"), "")
-                val itAuthor = it.author.lowercase().replace(Regex("[^a-z0-9]"), "")
-                itTitle == cleanTitle && itAuthor == cleanAuthor
-            }
-            if (matchFound) return true
-        }
-        return false
-    }
 }

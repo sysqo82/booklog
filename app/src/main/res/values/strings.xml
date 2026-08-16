@@ -1,7 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">BookLog</string>
-    <string name="search_hint">Search books...</string>
+    <string name="search_hint">Search books&#8230;</string>
     <string name="no_results">No books found</string>
     <string name="error_loading">Failed to load books</string>
+    <string name="book_count">%1$d books</string>
+    <string name="added_to_collection">Added %1$s</string>
+    <string name="added_to_wishlist">Added to Wishlist: %1$s</string>
+    <string name="search_failed_connection">Search failed. Please check connection.</string>
+    <string name="book_not_found">Book not found</string>
+    <string name="error_searching">Error searching for book</string>
+    <string name="api_quota_reached">Google Books API quota reached. Add an API key in local.properties to restore lookups.</string>
+    <string name="scan_barcode">Scan barcode</string>
+    <string name="filter_by_author">Filter by author</string>
+    <string name="wishlist">Wishlist</string>
+    <string name="add_book">Add book</string>
 </resources>

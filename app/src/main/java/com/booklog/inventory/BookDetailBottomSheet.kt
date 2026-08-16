@@ -32,7 +32,7 @@ class BookDetailBottomSheet : BottomSheetDialogFragment() {
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
-        savedInstanceState: Bundle?
+        savedInstanceState: Bundle?,
     ): View {
         _binding = BottomSheetBookDetailBinding.inflate(inflater, container, false)
         return binding.root
@@ -143,7 +143,7 @@ class BookDetailBottomSheet : BottomSheetDialogFragment() {
             binding.detailMoveCollectionBtn.setOnClickListener {
                 viewLifecycleOwner.lifecycleScope.launch {
                     try {
-                        repository.updateWishlistStatus(existingBook?.id ?: book.id, false)
+                        repository.updateWishlistStatus(existingBook?.id ?: book.id, isInWishlist = false)
                         Toast.makeText(requireContext(), "Moved to Collection", Toast.LENGTH_SHORT).show()
                         onCollectionChanged?.invoke()
                         dismiss()

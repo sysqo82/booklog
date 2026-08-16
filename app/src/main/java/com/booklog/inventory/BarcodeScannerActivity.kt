@@ -15,13 +15,14 @@ import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -88,27 +89,35 @@ class BarcodeScannerActivity : AppCompatActivity() {
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
-        cameraProviderFuture.addListener({
-            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+        cameraProviderFuture.addListener(
+            {
+                val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+            val resolutionSelector = ResolutionSelector.Builder()
+                .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                .build()
 
             val preview = Preview.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setResolutionSelector(resolutionSelector)
                 .build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
+                    it.surfaceProvider = previewView.surfaceProvider
                 }
 
             val imageAnalyzer = ImageAnalysis.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setResolutionSelector(resolutionSelector)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
                 .also {
-                    it.setAnalyzer(cameraExecutor, BarcodeAnalyzer { isbn ->
-                        val resultIntent = Intent().apply {
-                            putExtra(EXTRA_RESULT_ISBN, isbn)
-                        }
-                        setResult(RESULT_OK, resultIntent)
-                        finish()
-                    })
+                    it.setAnalyzer(
+                        cameraExecutor,
+                        BarcodeAnalyzer { isbn ->
+                            val resultIntent = Intent().apply {
+                                putExtra(EXTRA_RESULT_ISBN, isbn)
+                            }
+                            setResult(RESULT_OK, resultIntent)
+                            finish()
+                        },
+                    )
                 }
 
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -118,7 +127,7 @@ class BarcodeScannerActivity : AppCompatActivity() {
                 val camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer)
                 cameraControl = camera.cameraControl
                 
-                // Enable auto-focus by default
+                // Enable autofocus by default
                 val factory = previewView.meteringPointFactory
                 val centerPoint = factory.createPoint(previewView.width / 2f, previewView.height / 2f)
                 val action = FocusMeteringAction.Builder(centerPoint, FocusMeteringAction.FLAG_AF)
@@ -168,17 +177,17 @@ class BarcodeScannerActivity : AppCompatActivity() {
         @OptIn(ExperimentalGetImage::class)
         override fun analyze(imageProxy: ImageProxy) {
             val mediaImage = imageProxy.image
-            if (mediaImage != null && isScanning) {
+            if ((mediaImage != null) && isScanning) {
                 val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
                 
                 scanner.process(image)
                     .addOnSuccessListener { barcodes ->
                         for (barcode in barcodes) {
                             val rawValue = barcode.rawValue ?: continue
-                            if (rawValue.length == 13 && (rawValue.startsWith("978") || rawValue.startsWith("979"))) {
+                            if ((rawValue.length == 13) && (rawValue.startsWith("978") || rawValue.startsWith("979"))) {
                                 
                                 val boundingBox = barcode.boundingBox ?: continue
-                                if (isInsideScanBox(boundingBox, imageProxy, image)) {
+                                if (isInsideScanBox(boundingBox, image)) {
                                     isScanning = false
                                     onIsbnDetected(rawValue)
                                     break
@@ -196,7 +205,6 @@ class BarcodeScannerActivity : AppCompatActivity() {
 
         private fun isInsideScanBox(
             barcodeBoundingBox: Rect,
-            imageProxy: ImageProxy,
             inputImage: InputImage
         ): Boolean {
             // Get screen coordinates of the scan box

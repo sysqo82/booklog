@@ -10,20 +10,21 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 
 class BookEnrichmentWorker(
     appContext: Context,
-    workerParams: WorkerParameters
+    workerParams: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParams) {
 
-    override suspend fun doWork(): androidx.work.ListenableWorker.Result {
+    override suspend fun doWork(): Result {
         Log.d("BookEnrichment", "Starting background enrichment task")
         val repository = BookRepository(applicationContext)
         val booksToEnrich = repository.getBooksToEnrich().take(25)
         
         if (booksToEnrich.isEmpty()) {
             Log.d("BookEnrichment", "No books found needing enrichment or upgrade")
-            return androidx.work.ListenableWorker.Result.success()
+            return Result.success()
         }
 
         Log.d("BookEnrichment", "Found ${booksToEnrich.size} books to enrich/upgrade")
@@ -48,7 +49,7 @@ class BookEnrichmentWorker(
             .build()
         val olService = olRetrofit.create(OpenLibraryService::class.java)
 
-        val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
+        val apiKey = BuildConfig.GOOGLE_BOOKS_API_KEY.ifEmpty { null }
 
         var updatedCount = 0
         for (book in booksToEnrich) {
@@ -71,7 +72,7 @@ class BookEnrichmentWorker(
                     Log.d("BookEnrichment", "Strategy: Google query '$query' for '${book.title}'")
                     val response = try { 
                         apiService.searchBooks(query, maxResults = 5, apiKey = apiKey) 
-                    } catch (e: Exception) { 
+                    } catch (_: Exception) { 
                         null 
                     }
                     
@@ -81,15 +82,15 @@ class BookEnrichmentWorker(
                         val aMatch = isAuthorMatch(book.author, item.volumeInfo.authors)
                         
                         // Relaxed matching for first result if title is an exact match
-                        val isFirstResultExactTitle = items.indexOf(item) == 0 && isTitleMatch(book.title, item.volumeInfo.title, exactOnly = true)
+                        val isFirstResultExactTitle = (items.indexOf(item) == 0) && isTitleMatch(book.title, item.volumeInfo.title, exactOnly = true)
                         
                         if (tMatch && (aMatch || isFirstResultExactTitle)) {
-                            if (!aMatch && isFirstResultExactTitle) {
+                            if (!aMatch) {
                                 Log.d("BookEnrichment", "Relaxed author match for exact title: '${book.title}' matched API result with authors: ${item.volumeInfo.authors}")
                             }
                             true
                         } else {
-                            if (tMatch && !aMatch) {
+                            if (tMatch) {
                                 Log.d("BookEnrichment", "Candidate rejected: Title match but author mismatch. Local: '${book.author}', API: ${item.volumeInfo.authors}")
                             }
                             false
@@ -113,7 +114,7 @@ class BookEnrichmentWorker(
                     
                     if (!book.isbn.isNullOrBlank()) {
                         val bibKey = "ISBN:${book.isbn}"
-                        val directOlResponse = try { olService.getBookByISBN(bibKey) } catch (ignore: Exception) { null }
+                        val directOlResponse = try { olService.getBookByISBN(bibKey) } catch (_: Exception) { null }
                         if (!directOlResponse.isNullOrEmpty() && directOlResponse.containsKey(bibKey)) {
                             val olData = directOlResponse[bibKey]!!
                             foundThumbnail = olData.cover?.medium ?: olData.cover?.large
@@ -123,7 +124,7 @@ class BookEnrichmentWorker(
                     }
                     
                     if (foundThumbnail == null && foundDescription == null) {
-                        val olSearchResponse = try { olService.search("${book.title} ${book.author}") } catch (ignore: Exception) { null }
+                        val olSearchResponse = try { olService.search("${book.title} ${book.author}") } catch (_: Exception) { null }
                         val olMatch = olSearchResponse?.docs?.firstOrNull { doc ->
                             isTitleMatch(book.title, doc.title) && 
                             (isAuthorMatch(book.author, doc.author_name) || isTitleMatch(book.title, doc.title, exactOnly = true))
@@ -179,17 +180,17 @@ class BookEnrichmentWorker(
                 if (code == 429 || code >= 500) {
                     val reason = if (code == 429) "Rate limit hit (429)" else "Server error ($code)"
                     Log.w("BookEnrichment", "$reason for ${book.title}. Stopping and retrying later.")
-                    return androidx.work.ListenableWorker.Result.retry()
+                    return Result.retry()
                 }
                 Log.e("BookEnrichment", "HTTP error enriching book: ${book.title}", e)
             } catch (e: Exception) {
                 Log.e("BookEnrichment", "Error enriching book: ${book.title}", e)
             }
-            kotlinx.coroutines.delay(2000)
+            kotlinx.coroutines.delay(2000.milliseconds)
         }
 
         Log.d("BookEnrichment", "Background enrichment finished. Updated $updatedCount books.")
-        return androidx.work.ListenableWorker.Result.success()
+        return Result.success()
     }
 
     private fun isTitleMatch(localTitle: String, apiTitle: String, exactOnly: Boolean = false): Boolean {
@@ -204,7 +205,7 @@ class BookEnrichmentWorker(
 
         val cLocal = clean(localTitle, true)
         val cApi = clean(apiTitle, true)
-        return cLocal.isNotEmpty() && (cLocal == cApi || cLocal.contains(cApi) || cApi.contains(cLocal))
+        return (cLocal.isNotEmpty()) && (cLocal == cApi || cLocal.contains(cApi) || cApi.contains(cLocal))
     }
 
     private fun isAuthorMatch(localAuthor: String, apiAuthors: List<String>?): Boolean {
@@ -220,8 +221,7 @@ class BookEnrichmentWorker(
     private fun isThumbnailUpgrade(current: String?, new: String?): Boolean {
         if (new.isNullOrBlank()) return false
         if (current.isNullOrBlank()) return true
-        if (current.contains("openlibrary.org") && new.contains("google.com")) return true
-        return false
+        return (current.contains("openlibrary.org")) && (new.contains("google.com"))
     }
 
     private fun isDescriptionUpgrade(current: String?, new: String?): Boolean {
@@ -229,16 +229,14 @@ class BookEnrichmentWorker(
         if (current.isNullOrBlank()) return true
         
         // If current is very short, almost anything is an upgrade
-        if (current.length < 30 && new.length > 50) return true
+        if ((current.length < 30) && (new.length > 50)) return true
         
         // If current is a list of keywords and new has sentence structure
-        val currentIsList = current.count { it == ',' } > 3 && !current.contains(".")
-        val newIsSynopsis = new.contains(".") && new.length > current.length
+        val currentIsList = (current.count { it == ',' } > 3) && !current.contains(".")
+        val newIsSynopsis = new.contains(".") && (new.length > current.length)
         if (currentIsList && newIsSynopsis) return true
         
         // Significant length increase
-        if (new.length > current.length + 100 && new.contains(" ")) return true
-        
-        return false
+        return (new.length > (current.length + 100)) && new.contains(" ")
     }
 }
