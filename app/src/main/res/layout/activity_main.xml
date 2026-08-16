@@ -21,16 +21,16 @@
             android:paddingStart="12dp"
             android:paddingEnd="12dp">
 
-            <SearchView
+            <androidx.appcompat.widget.SearchView
                 android:id="@+id/search"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:background="@drawable/search_bg"
-                android:iconifiedByDefault="false"
+                app:iconifiedByDefault="false"
                 android:focusable="true"
                 android:clickable="true"
-                android:queryHint="@string/search_hint" />
+                app:queryHint="@string/search_hint" />
 
             <ImageView
                 android:id="@+id/scan_btn"
@@ -39,7 +39,7 @@
                 android:src="@android:drawable/ic_menu_camera"
                 android:scaleType="centerInside"
                 android:layout_marginStart="12dp"
-                android:contentDescription="Scan barcode" />
+                android:contentDescription="@string/scan_barcode" />
 
             <ImageView
                 android:id="@+id/filter_btn"
@@ -48,7 +48,7 @@
                 android:src="@android:drawable/ic_menu_sort_alphabetically"
                 android:scaleType="centerInside"
                 android:layout_marginStart="12dp"
-                android:contentDescription="Filter by author" />
+                android:contentDescription="@string/filter_by_author" />
         </LinearLayout>
 
         <LinearLayout
@@ -68,7 +68,7 @@
                 android:layout_weight="1"
                 android:textSize="14sp"
                 android:textColor="#666666"
-                android:text="0 books" />
+                android:text="@string/book_count" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/wishlist_filter_toggle"
@@ -79,7 +79,7 @@
                 android:paddingRight="12dp"
                 android:paddingTop="0dp"
                 android:paddingBottom="0dp"
-                android:text="Wishlist"
+                android:text="@string/wishlist"
                 android:textColor="@color/wishlist_toggle_text"
                 android:textSize="12sp"
                 android:checkable="true"
@@ -121,6 +121,7 @@
         android:layout_marginStart="24dp"
         android:layout_marginTop="24dp"
         android:src="@android:drawable/ic_input_add"
+        android:contentDescription="@string/add_book"
         app:backgroundTint="@color/primary"
         app:tint="@color/white" />
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

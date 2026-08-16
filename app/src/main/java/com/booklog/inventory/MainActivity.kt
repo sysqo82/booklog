@@ -1,23 +1,25 @@
 package com.booklog.inventory
 
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.SearchView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SearchView
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.gms.common.moduleinstall.ModuleInstall
-import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
-import com.google.android.gms.tasks.Task
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.OnBackPressedCallback
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -25,7 +27,6 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkRequest
-import com.google.mlkit.vision.barcode.common.Barcode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
@@ -35,6 +36,9 @@ import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.LinkedHashSet
+import kotlin.time.Duration.Companion.milliseconds
+import android.text.TextWatcher
+import android.text.Editable
 
 private const val TAG = "BookLog"
 
@@ -75,24 +79,27 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        window.statusBarColor = Color.WHITE
+        // For API 35+, edge-to-edge is default. For older versions, we set the color.
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         Log.d(TAG, "onCreate called, layout inflated")
 
-        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (!isViewingCollection) {
-                    Log.d(TAG, "Back pressed: in search mode, returning to collection")
-                    cancelOngoingOperations()
-                    findViewById<SearchView>(R.id.search)?.setQuery("", false)
-                    findViewById<SearchView>(R.id.search)?.clearFocus()
-                    loadCollection()
-                } else {
-                    Log.d(TAG, "Back pressed: in collection mode, exiting")
-                    finish()
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (!isViewingCollection) {
+                        Log.d(TAG, "Back pressed: in search mode, returning to collection")
+                        cancelOngoingOperations()
+                        findViewById<SearchView>(R.id.search)?.setQuery("", false)
+                        findViewById<SearchView>(R.id.search)?.clearFocus()
+                        loadCollection()
+                    } else {
+                        Log.d(TAG, "Back pressed: in collection mode, exiting")
+                        finish()
+                    }
                 }
-            }
-        })
+            },
+        )
 
         try {
             val logging = HttpLoggingInterceptor { message -> Log.d("OkHttp", message) }
@@ -144,7 +151,7 @@ class MainActivity : AppCompatActivity() {
                     lifecycleScope.launch {
                         try {
                             repository.addBook(book)
-                            android.widget.Toast.makeText(this@MainActivity, "Added ${book.title}", android.widget.Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity, getString(R.string.added_to_collection, book.title), Toast.LENGTH_SHORT).show()
                             updateSavedIdsAndRefresh()
                             if (isViewingCollection) {
                                 loadCollection()
@@ -158,13 +165,13 @@ class MainActivity : AppCompatActivity() {
                     lifecycleScope.launch {
                         try {
                             repository.addBook(book, isInWishlist = true)
-                            android.widget.Toast.makeText(this@MainActivity, "Added to Wishlist: ${book.title}", android.widget.Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity, getString(R.string.added_to_wishlist, book.title), Toast.LENGTH_SHORT).show()
                             updateSavedIdsAndRefresh()
                             if (isViewingCollection) {
                                 loadCollection()
                             }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error adding to wishlist", e)
+                        } catch (_: Exception) {
+                            Log.e(TAG, "Error adding to wishlist")
                         }
                     }
                 }
@@ -180,14 +187,16 @@ class MainActivity : AppCompatActivity() {
             recyclerView.layoutManager = GridLayoutManager(this, 2)
             recyclerView.adapter = adapter
 
-            recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    val layoutManager = recyclerView.layoutManager as GridLayoutManager
-                    if (layoutManager.findLastVisibleItemPosition() >= adapter.itemCount - 5 && hasMore && !isLoading) {
-                        loadMore()
+            recyclerView.addOnScrollListener(
+                object : RecyclerView.OnScrollListener() {
+                    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                        val layoutManager = recyclerView.layoutManager as GridLayoutManager
+                        if ((layoutManager.findLastVisibleItemPosition() >= (adapter.itemCount - 5)) && hasMore && !isLoading) {
+                            loadMore()
+                        }
                     }
-                }
-            })
+                },
+            )
 
             val searchView = findViewById<SearchView>(R.id.search)
             if (searchView == null) {
@@ -197,8 +206,7 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "SearchView found, attaching listener")
 
             // Find the underlying EditText to better control its behavior
-            val searchEditTextId = searchView.context.resources.getIdentifier("android:id/search_src_text", null, null)
-            val searchEditText = searchView.findViewById<android.widget.EditText>(searchEditTextId)
+            val searchEditText = searchView.findViewById<EditText>(androidx.appcompat.R.id.search_src_text)
 
             searchView.setOnClickListener {
                 searchView.isIconified = false
@@ -213,33 +221,35 @@ class MainActivity : AppCompatActivity() {
                 searchEditText?.clearFocus()
                 
                 // Force hide keyboard
-                val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.hideSoftInputFromWindow(searchView.windowToken, 0)
                 
                 loadCollection()
                 true
             }
-            searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(query: String?): Boolean {
-                    Log.d(TAG, "Query submitted: $query")
-                    if (!query.isNullOrBlank()) {
-                        search(query)
-                    }
-                    return true
-                }
-
-                override fun onQueryTextChange(newText: String?): Boolean {
-                    if (newText.isNullOrEmpty()) {
-                        // When the 'X' button is clicked or text is cleared manually
-                        if (!isViewingCollection) {
-                            isViewingCollection = true
-                            searchView.clearFocus()
-                            loadCollection()
+            searchView.setOnQueryTextListener(
+                object : SearchView.OnQueryTextListener {
+                    override fun onQueryTextSubmit(query: String?): Boolean {
+                        Log.d(TAG, "Query submitted: $query")
+                        if (!query.isNullOrBlank()) {
+                            search(query)
                         }
+                        return true
                     }
-                    return false
-                }
-            })
+
+                    override fun onQueryTextChange(newText: String?): Boolean {
+                        if (newText.isNullOrEmpty()) {
+                            // When the 'X' button is clicked or text is cleared manually
+                            if (!isViewingCollection) {
+                                isViewingCollection = true
+                                searchView.clearFocus()
+                                loadCollection()
+                            }
+                        }
+                        return false
+                    }
+                },
+            )
 
             val fab = findViewById<FloatingActionButton>(R.id.fab)
             if (fab == null) {
@@ -248,7 +258,7 @@ class MainActivity : AppCompatActivity() {
             }
             Log.d(TAG, "FAB found, attaching listener")
             Log.d(TAG, "FAB enabled: ${fab.isEnabled}, clickable: ${fab.isClickable}")
-            fab.setOnClickListener { v ->
+            fab.setOnClickListener {
                 Log.d(TAG, "FAB clicked, launching barcode scanner")
                 launchScanner()
             }
@@ -260,7 +270,7 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             Log.d(TAG, "Camera button found, attaching listener")
-            scanBtn.setOnClickListener { v ->
+            scanBtn.setOnClickListener {
                 Log.d(TAG, "Camera button clicked, launching barcode scanner")
                 launchScanner()
             }
@@ -296,24 +306,24 @@ class MainActivity : AppCompatActivity() {
             val collectionBooks = allSaved.filter { !it.isInWishlist }
             val wishlistBooks = allSaved.filter { it.isInWishlist }
             
-            val ids = collectionBooks.map { it.id }.toSet()
-            val isbns = collectionBooks.mapNotNull { it.isbn?.replace(Regex("[^0-9X]"), "") }.toSet()
-            val titleAuthors = collectionBooks.map { 
+            val ids = collectionBooks.asSequence().map { it.id }.toSet()
+            val isbns = collectionBooks.asSequence().mapNotNull { it.isbn?.replace(Regex("[^0-9X]"), "") }.toSet()
+            val titleAuthors = collectionBooks.asSequence().map { 
                 val cleanTitle = it.title.lowercase().replace(Regex("[^a-z0-9]"), "")
                 val cleanAuthor = it.author.lowercase().replace(Regex("[^a-z0-9]"), "")
                 "$cleanTitle|$cleanAuthor"
             }.toSet()
             
-            val wIds = wishlistBooks.map { it.id }.toSet()
-            val wIsbns = wishlistBooks.mapNotNull { it.isbn?.replace(Regex("[^0-9X]"), "") }.toSet()
-            val wTitleAuthors = wishlistBooks.map { 
+            val wIds = wishlistBooks.asSequence().map { it.id }.toSet()
+            val wIsbns = wishlistBooks.asSequence().mapNotNull { it.isbn?.replace(Regex("[^0-9X]"), "") }.toSet()
+            val wTitleAuthors = wishlistBooks.asSequence().map { 
                 val cleanTitle = it.title.lowercase().replace(Regex("[^a-z0-9]"), "")
                 val cleanAuthor = it.author.lowercase().replace(Regex("[^a-z0-9]"), "")
                 "$cleanTitle|$cleanAuthor"
             }.toSet()
             
             adapter.setSavedBooks(ids, isbns, titleAuthors, wIds, wIsbns, wTitleAuthors)
-            findViewById<TextView>(R.id.book_counter)?.text = "${allSaved.size} books"
+            findViewById<TextView>(R.id.book_counter)?.text = getString(R.string.book_count, allSaved.size)
             
             // Sync toggle button state
             findViewById<com.google.android.material.button.MaterialButton>(R.id.wishlist_filter_toggle)?.isChecked = isWishlistFilterActive
@@ -365,7 +375,7 @@ class MainActivity : AppCompatActivity() {
         isWishlistFilterActive = wishlistOnly
         adapter.isSearchMode = false
         isLoading = true
-        findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.VISIBLE
+        findViewById<TextView>(R.id.book_counter)?.visibility = View.VISIBLE
         searchJob = lifecycleScope.launch {
             try {
                 Log.d(TAG, "Loading user's collection${if (filterAuthor != null) " filtered by $filterAuthor" else ""}${if (wishlistOnly) " (wishlist only)" else ""}")
@@ -380,16 +390,16 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 Log.d(TAG, "Fetched ${myBooks.size} books from collection")
-                findViewById<TextView>(R.id.book_counter)?.text = "${myBooks.size} books"
+                findViewById<TextView>(R.id.book_counter)?.text = getString(R.string.book_count, myBooks.size)
                 adapter.clear()
                 
                 // Sort by author's last name
                 val sortedBooks = myBooks.map {
                     Book(it.id, it.title, it.author, it.isbn, it.thumbnail, it.description, it.isInWishlist)
-                }.sortedBy { book ->
+                }.asSequence().sortedBy { book ->
                     val names = book.author.split(" ").filter { it.isNotBlank() }
                     if (names.isNotEmpty()) names.last().lowercase() else ""
-                }
+                }.toList()
                 
                 adapter.addBooks(sortedBooks)
                 hasMore = false
@@ -409,7 +419,7 @@ class MainActivity : AppCompatActivity() {
                 }.distinct().sorted()
                 
                 sideIndex?.setLetters(existingLetters)
-                sideIndex?.visibility = if (existingLetters.isNotEmpty() && filterAuthor == null) android.view.View.VISIBLE else android.view.View.GONE
+                sideIndex?.visibility = if (existingLetters.isNotEmpty() && filterAuthor == null) View.VISIBLE else View.GONE
 
                 sideIndex?.onLetterSelected = { letter ->
                     val position = sortedBooks.indexOfFirst { book ->
@@ -428,7 +438,6 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading collection", e)
-                e.printStackTrace()
             } finally {
                 if (isActive) {
                     isLoading = false
@@ -452,7 +461,7 @@ class MainActivity : AppCompatActivity() {
                 if (e.code() == 503 || e.code() == 429) {
                     val errorType = if (e.code() == 503) "503 Service Unavailable" else "429 Too Many Requests"
                     Log.w(TAG, "$errorType (attempt ${attempt + 1}), retrying in ${currentDelay}ms...")
-                    delay(currentDelay)
+                    delay(currentDelay.milliseconds)
                     currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelay)
                 } else {
                     throw e
@@ -460,7 +469,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: java.io.IOException) {
                 // Retry on network failures (timeout, connection lost)
                 Log.w(TAG, "Network error (attempt ${attempt + 1}), retrying in ${currentDelay}ms: ${e.message}")
-                delay(currentDelay)
+                delay(currentDelay.milliseconds)
                 currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelay)
             }
         }
@@ -482,7 +491,7 @@ class MainActivity : AppCompatActivity() {
         cancelOngoingOperations()
         isViewingCollection = false
         adapter.isSearchMode = true
-        findViewById<SideIndexView>(R.id.side_index)?.visibility = android.view.View.GONE
+        findViewById<SideIndexView>(R.id.side_index)?.visibility = View.GONE
         adapter.clear()
         updateSavedIdsAndRefresh()
         currentPage = 0
@@ -491,7 +500,7 @@ class MainActivity : AppCompatActivity() {
         searchJob = lifecycleScope.launch {
             try {
                 Log.d(TAG, "Fetching books for query: $query")
-                val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
+        val apiKey = BuildConfig.GOOGLE_BOOKS_API_KEY.ifEmpty { null }
                 val country = getCountryCode()
                 
                 val response = try {
@@ -503,21 +512,22 @@ class MainActivity : AppCompatActivity() {
                     null
                 }
 
-                if (response == null || response.items.isNullOrEmpty()) {
+                val items = response?.items
+                if (response == null || items.isNullOrEmpty()) {
                     Log.d(TAG, "Google Books search returned 0 results or failed, trying Open Library...")
                     val olResponse = olService.search(query)
                     val olBooks = olResponse.docs?.map { mapOLDocToBook(it) } ?: emptyList()
                     
                     if (olBooks.isNotEmpty()) {
                         Log.d(TAG, "Found ${olBooks.size} books on Open Library")
-                        findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
+                        findViewById<TextView>(R.id.book_counter)?.visibility = View.GONE
                         adapter.addBooks(olBooks)
                         hasMore = olBooks.size >= 20
                         currentPage = 20
                     } else {
                         Log.d(TAG, "No books found on Open Library either")
                         if (response == null) {
-                             android.widget.Toast.makeText(this@MainActivity, "Search failed. Please check connection.", android.widget.Toast.LENGTH_SHORT).show()
+                             Toast.makeText(this@MainActivity, getString(R.string.search_failed_connection), Toast.LENGTH_SHORT).show()
                         }
                     }
                     isLoading = false
@@ -525,22 +535,21 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 Log.d(TAG, "API response received, totalItems: ${response.totalItems}")
-                val books = response.items?.map { mapBookItemToBook(it) } ?: emptyList()
+                val books = items.map { mapBookItemToBook(it) }
                 Log.d(TAG, "Mapped ${books.size} books")
-                findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
+                findViewById<TextView>(R.id.book_counter)?.visibility = View.GONE
                 adapter.addBooks(books)
                 hasMore = books.size < response.totalItems
                 currentPage = 20
                 Log.d(TAG, "Books added to adapter")
                 
                 // Hide keyboard after results are loaded
-                val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                 findViewById<SearchView>(R.id.search)?.let {
                     imm.hideSoftInputFromWindow(it.windowToken, 0)
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in search()", e)
-                e.printStackTrace()
+            } catch (_: Exception) {
+                Log.e(TAG, "Error in search()")
             } finally {
                 if (isActive) {
                     isLoading = false
@@ -555,18 +564,19 @@ class MainActivity : AppCompatActivity() {
         searchJob = lifecycleScope.launch {
             try {
                 val query = findViewById<SearchView>(R.id.search).query.toString()
-                val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
+        val apiKey = BuildConfig.GOOGLE_BOOKS_API_KEY.ifEmpty { null }
                 val country = getCountryCode()
                 
                 val response = retryIO {
                     apiService.searchBooks(query, currentPage, 20, apiKey, country)
                 }
-                val books = response.items?.map { mapBookItemToBook(it) } ?: emptyList()
+                val items = response.items ?: emptyList()
+                val books = items.map { mapBookItemToBook(it) }
                 adapter.addBooks(books)
                 hasMore = (currentPage + books.size) < response.totalItems
                 currentPage += 20
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Error loading more", e)
             } finally {
                 if (isActive) {
                     isLoading = false
@@ -580,7 +590,7 @@ class MainActivity : AppCompatActivity() {
         cancelOngoingOperations()
         isViewingCollection = false
         adapter.isSearchMode = true
-        findViewById<SideIndexView>(R.id.side_index)?.visibility = android.view.View.GONE
+        findViewById<SideIndexView>(R.id.side_index)?.visibility = View.GONE
         adapter.clear()
         updateSavedIdsAndRefresh()
         currentPage = 0
@@ -589,7 +599,7 @@ class MainActivity : AppCompatActivity() {
         searchJob = lifecycleScope.launch {
             try {
                 Log.d(TAG, "Searching by ISBN: $normalizedIsbn")
-                val apiKey = if (BuildConfig.GOOGLE_BOOKS_API_KEY.isNotEmpty()) BuildConfig.GOOGLE_BOOKS_API_KEY else null
+        val apiKey = BuildConfig.GOOGLE_BOOKS_API_KEY.ifEmpty { null }
                 val country = getCountryCode()
 
                 val queryCandidates = listOf("isbn:$normalizedIsbn", normalizedIsbn)
@@ -637,7 +647,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         if (shouldStop) break
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     useFallback = true
                 }
 
@@ -657,7 +667,7 @@ class MainActivity : AppCompatActivity() {
                         val book = mapOLBookDataToBook(bibKey, directOlResponse[bibKey]!!)
                         Log.d(TAG, "Found book via direct OL ISBN lookup: ${book.title}")
                         adapter.addBooks(listOf(book))
-                        findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
+                        findViewById<TextView>(R.id.book_counter)?.visibility = View.GONE
                         isLoading = false
                         return@launch
                     }
@@ -673,23 +683,23 @@ class MainActivity : AppCompatActivity() {
                     if (olBooks.isNotEmpty()) {
                         Log.d(TAG, "Found ${olBooks.size} books via general OL search")
                         adapter.addBooks(olBooks)
-                        findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
+                        findViewById<TextView>(R.id.book_counter)?.visibility = View.GONE
                         isLoading = false
                         return@launch
                     }
                     
                     Log.d(TAG, "No results found for ISBN on either service")
-                    android.widget.Toast.makeText(this@MainActivity, "Book not found", android.widget.Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.book_not_found), Toast.LENGTH_LONG).show()
                     loadCollection()
                 } else {
-                    val books = response?.items?.map { mapBookItemToBook(it) } ?: emptyList()
+                    val books = response.items.map { mapBookItemToBook(it) }
                     Log.d(TAG, "Mapped ${books.size} books from search results")
-                    findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.GONE
+                    findViewById<TextView>(R.id.book_counter)?.visibility = View.GONE
                     adapter.addBooks(books)
                 }
                 
                 // Hide keyboard after ISBN search
-                val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                 findViewById<SearchView>(R.id.search)?.let {
                     imm.hideSoftInputFromWindow(it.windowToken, 0)
                 }
@@ -697,16 +707,17 @@ class MainActivity : AppCompatActivity() {
                 hasMore = false
             } catch (e: HttpException) {
                 Log.e(TAG, "HTTP error in searchByISBN()", e)
-                val message = if (e.code() == 429) {
-                    "Google Books API quota reached. Add an API key in local.properties to restore lookups."
+                val code = e.code()
+                val message = if ((code == 429) || (code == 503)) {
+                    getString(R.string.api_quota_reached)
                 } else {
-                    "Error searching for book"
+                    getString(R.string.error_searching)
                 }
-                android.widget.Toast.makeText(this@MainActivity, message, android.widget.Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
                 loadCollection()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in searchByISBN()", e)
-                android.widget.Toast.makeText(this@MainActivity, "Error searching for book", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) {
+                Log.e(TAG, "Error in searchByISBN()")
+                Toast.makeText(this@MainActivity, getString(R.string.error_searching), Toast.LENGTH_SHORT).show()
                 loadCollection()
             } finally {
                 if (isActive) {
@@ -740,27 +751,27 @@ class MainActivity : AppCompatActivity() {
     private fun showAuthorFilterDialog() {
         lifecycleScope.launch {
             val allBooks = repository.getMyBooks()
-            val authors = allBooks.map { it.author }.distinct().sorted()
+            val authors = allBooks.asSequence().map { it.author }.distinct().sorted().toList()
             
             val dialogView = layoutInflater.inflate(R.layout.dialog_author_filter, null)
-            val searchEdit = dialogView.findViewById<android.widget.EditText>(R.id.author_search)
-            val recyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.author_list)
+            val searchEdit = dialogView.findViewById<EditText>(R.id.author_search)
+            val recyclerView = dialogView.findViewById<RecyclerView>(R.id.author_list)
             
-            val dialog = androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+            val dialog = AlertDialog.Builder(this@MainActivity)
                 .setView(dialogView)
                 .setPositiveButton("Apply") { _, _ ->
                     isViewingCollection = true
-                    val searchView = findViewById<android.widget.SearchView>(R.id.search)
+                    val searchView = findViewById<SearchView>(R.id.search)
                     searchView?.setQuery("", false)
                     searchView?.clearFocus()
-                    loadCollection(null)
+                    loadCollection(null, wishlistOnly = false,)
                 }
                 .setNegativeButton("Cancel", null)
                 .create()
 
             val authorAdapter = AuthorAdapter(authors) { selectedAuthor ->
                 isViewingCollection = true
-                val searchView = findViewById<android.widget.SearchView>(R.id.search)
+                val searchView = findViewById<SearchView>(R.id.search)
                 if (selectedAuthor == null) {
                     searchView?.setQuery("", false)
                     loadCollection(null)
@@ -772,15 +783,15 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
             }
             
-            recyclerView.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@MainActivity)
+            recyclerView.layoutManager = LinearLayoutManager(this@MainActivity)
             recyclerView.adapter = authorAdapter
             
-            searchEdit.addTextChangedListener(object : android.text.TextWatcher {
+            searchEdit.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     authorAdapter.filter(s.toString())
                 }
-                override fun afterTextChanged(s: android.text.Editable?) {}
+                override fun afterTextChanged(s: Editable?) {}
             })
             
             dialog.show()

@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
@@ -11,7 +13,7 @@ import android.view.View
 class ViewFinderOverlay @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
+    defStyleAttr: Int = 0,
 ) : View(context, attrs, defStyleAttr) {
     
     private val framePaint = Paint().apply {
@@ -26,6 +28,16 @@ class ViewFinderOverlay @JvmOverloads constructor(
         style = Paint.Style.FILL
         isAntiAlias = true
     }
+
+    private val cornerPaint = Paint().apply {
+        color = Color.GREEN
+        strokeWidth = 4f
+        style = Paint.Style.STROKE
+        isAntiAlias = true
+    }
+
+    private val clearXfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+    private val frameRect = RectF()
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -44,22 +56,16 @@ class ViewFinderOverlay @JvmOverloads constructor(
         canvas.drawRect(0f, 0f, width, height, shadowPaint)
         
         // Clear the viewfinder area
-        shadowPaint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+        shadowPaint.xfermode = clearXfermode
         canvas.drawRect(left, top, right, bottom, shadowPaint)
         shadowPaint.xfermode = null
         
         // Draw viewfinder frame
-        val frame = RectF(left, top, right, bottom)
-        canvas.drawRect(frame, framePaint)
+        frameRect.set(left, top, right, bottom)
+        canvas.drawRect(frameRect, framePaint)
         
         // Draw corner brackets
         val cornerLength = viewfinderSize * 0.15f
-        val cornerPaint = Paint().apply {
-            color = Color.GREEN
-            strokeWidth = 4f
-            style = Paint.Style.STROKE
-            isAntiAlias = true
-        }
         
         // Top-left
         canvas.drawLine(left, top, left + cornerLength, top, cornerPaint)

@@ -8,9 +8,12 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.floor
+import androidx.core.graphics.toColorInt
 
 class SideIndexView @JvmOverloads constructor(
-    context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0,
 ) : View(context, attrs, defStyleAttr) {
 
     private var letters = listOf<Char>()
@@ -34,7 +37,7 @@ class SideIndexView @JvmOverloads constructor(
         if (letters.isEmpty()) return
 
         // Draw background
-        canvas.drawColor(Color.parseColor("#EEEEEE"))
+        canvas.drawColor("#EEEEEE".toColorInt())
 
         itemHeight = height.toFloat() / letters.size
         for (i in letters.indices) {
@@ -51,9 +54,15 @@ class SideIndexView @JvmOverloads constructor(
                 if (index in letters.indices) {
                     onLetterSelected?.invoke(letters[index])
                 }
+                performClick()
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
     }
 }
