@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private var isLoading = false
     private var hasMore = true
     private var isViewingCollection = false
+    private var isWishlistFilterActive = false
     private var searchJob: kotlinx.coroutines.Job? = null
 
     private fun cancelOngoingOperations() {
@@ -150,6 +151,20 @@ class MainActivity : AppCompatActivity() {
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Error adding book", e)
+                        }
+                    }
+                },
+                onQuickWishlistClick = { book ->
+                    lifecycleScope.launch {
+                        try {
+                            repository.addBook(book, isInWishlist = true)
+                            android.widget.Toast.makeText(this@MainActivity, "Added to Wishlist: ${book.title}", android.widget.Toast.LENGTH_SHORT).show()
+                            updateSavedIdsAndRefresh()
+                            if (isViewingCollection) {
+                                loadCollection()
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error adding to wishlist", e)
                         }
                     }
                 }
@@ -256,6 +271,13 @@ class MainActivity : AppCompatActivity() {
                 showAuthorFilterDialog()
             }
 
+            val wishlistToggle = findViewById<com.google.android.material.button.MaterialButton>(R.id.wishlist_filter_toggle)
+            wishlistToggle?.setOnClickListener {
+                isWishlistFilterActive = !isWishlistFilterActive
+                wishlistToggle.isChecked = isWishlistFilterActive
+                loadCollection()
+            }
+
             // Open on collection by default
             isViewingCollection = true
             updateSavedIdsAndRefresh()
@@ -270,16 +292,31 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSavedIdsAndRefresh() {
         lifecycleScope.launch {
-            val myBooks = repository.getMyBooks()
-            val ids = myBooks.map { it.id }.toSet()
-            val isbns = myBooks.mapNotNull { it.isbn?.replace(Regex("[^0-9X]"), "") }.toSet()
-            val titleAuthors = myBooks.map { 
+            val allSaved = repository.getMyBooks()
+            val collectionBooks = allSaved.filter { !it.isInWishlist }
+            val wishlistBooks = allSaved.filter { it.isInWishlist }
+            
+            val ids = collectionBooks.map { it.id }.toSet()
+            val isbns = collectionBooks.mapNotNull { it.isbn?.replace(Regex("[^0-9X]"), "") }.toSet()
+            val titleAuthors = collectionBooks.map { 
                 val cleanTitle = it.title.lowercase().replace(Regex("[^a-z0-9]"), "")
                 val cleanAuthor = it.author.lowercase().replace(Regex("[^a-z0-9]"), "")
                 "$cleanTitle|$cleanAuthor"
             }.toSet()
-            adapter.setSavedBooks(ids, isbns, titleAuthors)
-            findViewById<TextView>(R.id.book_counter)?.text = "${myBooks.size} books"
+            
+            val wIds = wishlistBooks.map { it.id }.toSet()
+            val wIsbns = wishlistBooks.mapNotNull { it.isbn?.replace(Regex("[^0-9X]"), "") }.toSet()
+            val wTitleAuthors = wishlistBooks.map { 
+                val cleanTitle = it.title.lowercase().replace(Regex("[^a-z0-9]"), "")
+                val cleanAuthor = it.author.lowercase().replace(Regex("[^a-z0-9]"), "")
+                "$cleanTitle|$cleanAuthor"
+            }.toSet()
+            
+            adapter.setSavedBooks(ids, isbns, titleAuthors, wIds, wIsbns, wTitleAuthors)
+            findViewById<TextView>(R.id.book_counter)?.text = "${allSaved.size} books"
+            
+            // Sync toggle button state
+            findViewById<com.google.android.material.button.MaterialButton>(R.id.wishlist_filter_toggle)?.isChecked = isWishlistFilterActive
         }
     }
 
@@ -292,7 +329,8 @@ class MainActivity : AppCompatActivity() {
             item.volumeInfo.authors?.firstOrNull() ?: "Unknown",
             isbn,
             item.volumeInfo.imageLinks?.thumbnail?.replace("http:", "https:"),
-            item.volumeInfo.description
+            item.volumeInfo.description,
+            false
         )
     }
 
@@ -304,7 +342,8 @@ class MainActivity : AppCompatActivity() {
             author = doc.author_name?.firstOrNull() ?: "Unknown",
             isbn = doc.isbn?.firstOrNull(),
             thumbnail = coverUrl,
-            description = null
+            description = null,
+            isInWishlist = false
         )
     }
 
@@ -315,20 +354,26 @@ class MainActivity : AppCompatActivity() {
             author = data.authors?.firstOrNull()?.name ?: "Unknown",
             isbn = data.isbn_13?.firstOrNull() ?: data.isbn_10?.firstOrNull(),
             thumbnail = data.cover?.medium ?: data.cover?.large,
-            description = data.subjects?.joinToString(", ") { it.name }
+            description = data.subjects?.joinToString(", ") { it.name },
+            isInWishlist = false
         )
     }
 
-    private fun loadCollection(filterAuthor: String? = null) {
+    private fun loadCollection(filterAuthor: String? = null, wishlistOnly: Boolean = isWishlistFilterActive) {
         cancelOngoingOperations()
         isViewingCollection = true
+        isWishlistFilterActive = wishlistOnly
         adapter.isSearchMode = false
         isLoading = true
         findViewById<TextView>(R.id.book_counter)?.visibility = android.view.View.VISIBLE
         searchJob = lifecycleScope.launch {
             try {
-                Log.d(TAG, "Loading user's collection${if (filterAuthor != null) " filtered by $filterAuthor" else ""}")
+                Log.d(TAG, "Loading user's collection${if (filterAuthor != null) " filtered by $filterAuthor" else ""}${if (wishlistOnly) " (wishlist only)" else ""}")
                 var myBooks = repository.getMyBooks()
+                
+                if (wishlistOnly) {
+                    myBooks = myBooks.filter { it.isInWishlist }
+                }
                 
                 if (filterAuthor != null) {
                     myBooks = myBooks.filter { it.author.equals(filterAuthor, ignoreCase = true) }
@@ -340,7 +385,7 @@ class MainActivity : AppCompatActivity() {
                 
                 // Sort by author's last name
                 val sortedBooks = myBooks.map {
-                    Book(it.id, it.title, it.author, it.isbn, it.thumbnail, it.description)
+                    Book(it.id, it.title, it.author, it.isbn, it.thumbnail, it.description, it.isInWishlist)
                 }.sortedBy { book ->
                     val names = book.author.split(" ").filter { it.isNotBlank() }
                     if (names.isNotEmpty()) names.last().lowercase() else ""
@@ -703,6 +748,14 @@ class MainActivity : AppCompatActivity() {
             
             val dialog = androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
                 .setView(dialogView)
+                .setPositiveButton("Apply") { _, _ ->
+                    isViewingCollection = true
+                    val searchView = findViewById<android.widget.SearchView>(R.id.search)
+                    searchView?.setQuery("", false)
+                    searchView?.clearFocus()
+                    loadCollection(null)
+                }
+                .setNegativeButton("Cancel", null)
                 .create()
 
             val authorAdapter = AuthorAdapter(authors) { selectedAuthor ->

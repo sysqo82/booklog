@@ -11,5 +11,6 @@ data class BookEntity(
     val isbn: String?,
     val thumbnail: String?,
     val description: String?,
+    val isInWishlist: Boolean = false,
     val addedAt: Long = System.currentTimeMillis()
 )

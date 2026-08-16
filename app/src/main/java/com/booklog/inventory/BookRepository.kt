@@ -5,7 +5,7 @@ import android.content.Context
 class BookRepository(context: Context) {
     private val bookDao = BookDatabase.getDatabase(context).bookDao()
 
-    suspend fun addBook(book: Book) {
+    suspend fun addBook(book: Book, isInWishlist: Boolean = false) {
         val normalizedIsbn = book.isbn?.replace(Regex("[^0-9X]"), "")
         val existing = if (normalizedIsbn != null) {
             bookDao.findByIsbn(normalizedIsbn)
@@ -21,8 +21,13 @@ class BookRepository(context: Context) {
             author = book.author,
             isbn = normalizedIsbn,
             thumbnail = book.thumbnail,
-            description = book.description
+            description = book.description,
+            isInWishlist = isInWishlist
         ))
+    }
+
+    suspend fun updateWishlistStatus(id: String, isInWishlist: Boolean) {
+        bookDao.updateWishlistStatus(id, isInWishlist)
     }
 
     suspend fun findByIsbn(isbn: String): BookEntity? {

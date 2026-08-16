@@ -51,17 +51,46 @@
                 android:contentDescription="Filter by author" />
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/book_counter"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="horizontal"
             android:layout_marginTop="8dp"
             android:layout_marginBottom="16dp"
             android:layout_marginStart="16dp"
             android:layout_marginEnd="16dp"
-            android:textSize="14sp"
-            android:textColor="#666666"
-            android:text="0 books" />
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/book_counter"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:text="0 books" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/wishlist_filter_toggle"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp"
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp"
+                android:text="Wishlist"
+                android:textColor="@color/wishlist_toggle_text"
+                android:textSize="12sp"
+                android:checkable="true"
+                app:backgroundTint="@color/wishlist_toggle_bg"
+                app:icon="@drawable/sl_wishlist_icon"
+                app:iconSize="16dp"
+                app:iconTint="@color/wishlist_toggle_text"
+                app:cornerRadius="18dp"
+                app:strokeColor="@color/wishlist_toggle_stroke"
+                app:strokeWidth="1dp" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"

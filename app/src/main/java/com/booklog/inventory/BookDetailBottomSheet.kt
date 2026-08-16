@@ -60,40 +60,95 @@ class BookDetailBottomSheet : BottomSheetDialogFragment() {
         Glide.with(this).load(book.thumbnail).into(binding.detailCover)
 
         viewLifecycleOwner.lifecycleScope.launch {
-            val isAlreadySaved = repository.isBookSaved(book.id, book.isbn, book.title, book.author)
-            if (isAlreadySaved) {
-                binding.detailAddBtn.visibility = android.view.View.GONE
-                binding.detailRemoveBtn.visibility = android.view.View.VISIBLE
-                binding.detailRemoveBtn.setOnClickListener {
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        try {
-                            val existing = if (book.isbn != null) {
-                                repository.findByIsbn(book.isbn)
-                            } else {
-                                repository.findByTitleAndAuthor(book.title, book.author)
-                            }
-                            val idToRemove = existing?.id ?: book.id
-                            repository.removeBook(idToRemove)
-                            Toast.makeText(requireContext(), "Removed from Collection", Toast.LENGTH_SHORT).show()
-                            onCollectionChanged?.invoke()
-                            dismiss()
-                        } catch (_: Exception) {
-                            Toast.makeText(requireContext(), "Error removing book", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+            val existingBook = if (book.isbn != null) {
+                repository.findByIsbn(book.isbn)
+            } else {
+                repository.findByTitleAndAuthor(book.title, book.author)
+            }
+            
+            val isSaved = existingBook != null
+            val inWishlist = existingBook?.isInWishlist == true
+            
+            // Initial visibility state
+            binding.detailAddBtn.visibility = View.GONE
+            binding.detailWishlistBtn.visibility = View.GONE
+            binding.detailRemoveBtn.visibility = View.GONE
+            binding.detailRemoveWishlistBtn.visibility = View.GONE
+            binding.detailMoveCollectionBtn.visibility = View.GONE
+
+            if (isSaved) {
+                if (inWishlist) {
+                    binding.detailMoveCollectionBtn.visibility = View.VISIBLE
+                    binding.detailRemoveWishlistBtn.visibility = View.VISIBLE
+                } else {
+                    binding.detailRemoveBtn.visibility = View.VISIBLE
                 }
             } else {
-                binding.detailAddBtn.visibility = android.view.View.VISIBLE
-                binding.detailAddBtn.setOnClickListener {
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        try {
-                            repository.addBook(book)
-                            Toast.makeText(requireContext(), "Added to Collection", Toast.LENGTH_SHORT).show()
-                            onCollectionChanged?.invoke()
-                            dismiss()
-                        } catch (_: Exception) {
-                            Toast.makeText(requireContext(), "Error adding book", Toast.LENGTH_SHORT).show()
-                        }
+                binding.detailAddBtn.visibility = View.VISIBLE
+                binding.detailWishlistBtn.visibility = View.VISIBLE
+            }
+
+            binding.detailAddBtn.setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        repository.addBook(book, isInWishlist = false)
+                        Toast.makeText(requireContext(), "Added to Collection", Toast.LENGTH_SHORT).show()
+                        onCollectionChanged?.invoke()
+                        dismiss()
+                    } catch (_: Exception) {
+                        Toast.makeText(requireContext(), "Error adding book", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            binding.detailWishlistBtn.setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        repository.addBook(book, isInWishlist = true)
+                        Toast.makeText(requireContext(), "Added to Wishlist", Toast.LENGTH_SHORT).show()
+                        onCollectionChanged?.invoke()
+                        dismiss()
+                    } catch (_: Exception) {
+                        Toast.makeText(requireContext(), "Error adding to wishlist", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            binding.detailRemoveBtn.setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        repository.removeBook(existingBook?.id ?: book.id)
+                        Toast.makeText(requireContext(), "Removed from Collection", Toast.LENGTH_SHORT).show()
+                        onCollectionChanged?.invoke()
+                        dismiss()
+                    } catch (_: Exception) {
+                        Toast.makeText(requireContext(), "Error removing book", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            binding.detailRemoveWishlistBtn.setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        repository.removeBook(existingBook?.id ?: book.id)
+                        Toast.makeText(requireContext(), "Removed from Wishlist", Toast.LENGTH_SHORT).show()
+                        onCollectionChanged?.invoke()
+                        dismiss()
+                    } catch (_: Exception) {
+                        Toast.makeText(requireContext(), "Error removing from wishlist", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            binding.detailMoveCollectionBtn.setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        repository.updateWishlistStatus(existingBook?.id ?: book.id, false)
+                        Toast.makeText(requireContext(), "Moved to Collection", Toast.LENGTH_SHORT).show()
+                        onCollectionChanged?.invoke()
+                        dismiss()
+                    } catch (_: Exception) {
+                        Toast.makeText(requireContext(), "Error moving book", Toast.LENGTH_SHORT).show()
                     }
                 }
             }

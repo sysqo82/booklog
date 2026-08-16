@@ -42,6 +42,25 @@
                 android:elevation="4dp"
                 android:visibility="gone" />
 
+            <TextView
+                android:id="@+id/in_wishlist_ribbon"
+                android:layout_width="160dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:background="@drawable/wishlist_ribbon_background"
+                android:text="IN WISHLIST"
+                android:textColor="@color/white"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:rotation="45"
+                android:translationX="45dp"
+                android:translationY="30dp"
+                android:elevation="4dp"
+                android:visibility="gone" />
+
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/quick_add_btn"
                 android:layout_width="wrap_content"
@@ -51,6 +70,18 @@
                 app:fabSize="mini"
                 android:src="@android:drawable/ic_input_add"
                 app:backgroundTint="@color/primary"
+                app:tint="@color/white"
+                android:visibility="gone" />
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/quick_wishlist_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|start"
+                android:layout_margin="8dp"
+                app:fabSize="mini"
+                android:src="@drawable/ic_heart"
+                app:backgroundTint="@color/wishlist_blue"
                 app:tint="@color/white"
                 android:visibility="gone" />
         </FrameLayout>
