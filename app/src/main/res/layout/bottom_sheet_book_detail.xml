@@ -69,11 +69,41 @@
             android:textColor="@color/white" />
 
         <Button
+            android:id="@+id/detail_wishlist_btn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="Add to Wishlist"
+            android:backgroundTint="@color/wishlist_blue"
+            android:textColor="@color/white"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/detail_move_collection_btn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="Move to Collection"
+            android:backgroundTint="@color/primary"
+            android:textColor="@color/white"
+            android:visibility="gone" />
+
+        <Button
             android:id="@+id/detail_remove_btn"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:layout_marginTop="8dp"
             android:text="Remove from Collection"
+            android:backgroundTint="#CC0000"
+            android:textColor="@color/white"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/detail_remove_wishlist_btn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="Remove from Wishlist"
             android:backgroundTint="#CC0000"
             android:textColor="@color/white"
             android:visibility="gone" />

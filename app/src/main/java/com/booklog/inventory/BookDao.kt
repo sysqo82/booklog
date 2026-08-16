@@ -28,6 +28,9 @@ interface BookDao {
     @Query("UPDATE books SET thumbnail = :thumbnail, description = :description WHERE id = :id")
     suspend fun updateBookMetadata(id: String, thumbnail: String?, description: String?)
 
+    @Query("UPDATE books SET isInWishlist = :isInWishlist WHERE id = :id")
+    suspend fun updateWishlistStatus(id: String, isInWishlist: Boolean)
+
     @Query("UPDATE books SET isbn = :isbn, thumbnail = :thumbnail, description = :description WHERE id = :id")
     suspend fun updateFullMetadata(id: String, isbn: String?, thumbnail: String?, description: String?)
 
