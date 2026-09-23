@@ -330,44 +330,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun mapBookItemToBook(item: BookItem): Book {
-        val isbn = item.volumeInfo.industryIdentifiers?.find { it.type == "ISBN_13" }?.identifier
-            ?: item.volumeInfo.industryIdentifiers?.find { it.type == "ISBN_10" }?.identifier
-        return Book(
-            item.id,
-            item.volumeInfo.title,
-            item.volumeInfo.authors?.firstOrNull() ?: "Unknown",
-            isbn,
-            item.volumeInfo.imageLinks?.thumbnail?.replace("http:", "https:"),
-            item.volumeInfo.description,
-            false
-        )
-    }
+    private fun mapBookItemToBook(item: BookItem): Book = BookMapper.mapBookItemToBook(item)
 
-    private fun mapOLDocToBook(doc: OLDoc): Book {
-        val coverUrl = doc.cover_i?.let { "https://covers.openlibrary.org/b/id/$it-M.jpg" }
-        return Book(
-            id = doc.key.replace("/works/", ""),
-            title = doc.title,
-            author = doc.author_name?.firstOrNull() ?: "Unknown",
-            isbn = doc.isbn?.firstOrNull(),
-            thumbnail = coverUrl,
-            description = null,
-            isInWishlist = false
-        )
-    }
+    private fun mapOLDocToBook(doc: OLDoc): Book = BookMapper.mapOLDocToBook(doc)
 
-    private fun mapOLBookDataToBook(key: String, data: OLBookData): Book {
-        return Book(
-            id = key.replace("ISBN:", ""),
-            title = data.title,
-            author = data.authors?.firstOrNull()?.name ?: "Unknown",
-            isbn = data.isbn_13?.firstOrNull() ?: data.isbn_10?.firstOrNull(),
-            thumbnail = data.cover?.medium ?: data.cover?.large,
-            description = data.subjects?.joinToString(", ") { it.name },
-            isInWishlist = false
-        )
-    }
+    private fun mapOLBookDataToBook(key: String, data: OLBookData): Book = BookMapper.mapOLBookDataToBook(key, data)
 
     private fun loadCollection(filterAuthor: String? = null, wishlistOnly: Boolean = isWishlistFilterActive) {
         cancelOngoingOperations()
