@@ -10,11 +10,11 @@ data class OLSearchResponse(
 
 data class OLDoc(
     val title: String,
-    val author_name: List<String>?,
-    val isbn: List<String>?,
-    val cover_i: Long?,
+    val author_name: List<String>? = null,
+    val isbn: List<String>? = null,
+    val cover_i: Long? = null,
     val key: String,
-    val first_publish_year: Int?
+    val first_publish_year: Int? = null,
 )
 
 interface OpenLibraryService {
@@ -35,14 +35,14 @@ interface OpenLibraryService {
 
 data class OLBookData(
     val title: String,
-    val authors: List<OLAuthor>?,
-    val isbn_13: List<String>?,
-    val isbn_10: List<String>?,
-    val cover: OLCover?,
-    val subjects: List<OLSubject>?,
-    val url: String?
+    val authors: List<OLAuthor>? = null,
+    val isbn_13: List<String>? = null,
+    val isbn_10: List<String>? = null,
+    val cover: OLCover? = null,
+    val subjects: List<OLSubject>? = null,
+    val url: String? = null,
 )
 
 data class OLAuthor(val name: String)
-data class OLCover(val small: String?, val medium: String?, val large: String?)
-data class OLSubject(val name: String)
+data class OLCover(val small: String? = null, val medium: String? = null, val large: String? = null)
+data class OLSubject(val name: String, val url: String? = null)

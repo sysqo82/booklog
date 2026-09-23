@@ -12,8 +12,8 @@ android {
         applicationId "com.booklog.inventory"
         minSdk 24
         targetSdk 37
-        versionCode 20
-        versionName "3.1"
+        versionCode 21
+        versionName "3.2"
 
         Properties properties = new Properties()
         if (project.rootProject.file('local.properties').canRead()) {
@@ -90,4 +90,5 @@ dependencies {
     implementation libs.androidx.room.ktx
     implementation libs.zxing.android.embedded
     implementation libs.androidx.work.runtime.ktx
+    testImplementation libs.junit
 }

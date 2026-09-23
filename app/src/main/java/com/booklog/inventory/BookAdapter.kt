@@ -95,9 +95,7 @@ class BookAdapter(
     }
 
     private fun normalizeTitleAuthor(title: String, author: String): String {
-        val cleanTitle = title.lowercase().replace(Regex("[^a-z0-9]"), "")
-        val cleanAuthor = author.lowercase().replace(Regex("[^a-z0-9]"), "")
-        return "$cleanTitle|$cleanAuthor"
+        return BookMapper.normalizeTitleAuthor(title, author)
     }
 
     override fun getItemCount() = books.size
